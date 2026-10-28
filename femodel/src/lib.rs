@@ -1,4 +1,3 @@
-pub mod geom_utils;
 pub mod objects;
 pub mod utils;
 

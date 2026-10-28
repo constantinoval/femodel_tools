@@ -159,6 +159,7 @@ fn main() -> anyhow::Result<()> {
             break;
         }
     }
+    let f = m.generate_nodal_correlated_random_field(1.0);
     dbg!(fields);
     let coupled_fields =
         Confirm::new("Генерировать поля с одинаковым распределением в пространстве?")

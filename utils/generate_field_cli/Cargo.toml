@@ -7,4 +7,3 @@ edition = "2024"
 anyhow = "1.0.104"
 inquire = "0.9.4"
 femodel = {path = "../../femodel"}
-#clap = { version = "4", features = ["derive"] }
