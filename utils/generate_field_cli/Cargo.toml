@@ -1,0 +1,10 @@
+[package]
+name = "generate_field_cli"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.104"
+inquire = "0.9.4"
+femodel = {path = "../../femodel"}
+#clap = { version = "4", features = ["derive"] }

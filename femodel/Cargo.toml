@@ -1,0 +1,12 @@
+[package]
+name = "femodel"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.104"
+fast-math = "0.1.1"
+indicatif = { version = "0.18.6", features = ["rayon"] }
+rand = { version = "0.10.3", features = ["chacha"] }
+rand_distr = "0.6.0"
+rayon = "1.12.0"

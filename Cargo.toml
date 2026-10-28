@@ -1,0 +1,4 @@
+[workspace]
+members = ["femodel", "utils/generate_field_cli"]
+
+workspace.resolver = "3"
