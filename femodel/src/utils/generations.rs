@@ -42,9 +42,9 @@ pub struct GeneratedField {
 impl From<&FieldType> for String {
     fn from(value: &FieldType) -> Self {
         match value {
-            FieldType::Isotropic(l) => format!("isotropic({})", l).to_string(),
+            FieldType::Isotropic(l) => format!("isotropic(Lc={})", l).to_string(),
             FieldType::Orthotropic((lx, ly, lz)) => {
-                format!("orthotropic({}, {}, {})", lx, ly, lz).to_string()
+                format!("orthotropic(Lx={}, Ly={}, Lz={})", lx, ly, lz).to_string()
             }
         }
     }
@@ -227,16 +227,32 @@ pub fn fields_save_to_abaqus(file_path: &str, fields: &Vec<GeneratedField>) -> a
     writeln!(writer, "** Generated random fields")?;
     for f in fields {
         let fp = &f.field_property;
-        let data = &f.field;
+        let mut data: Vec<(usize, f32)> = f.field.clone().into_iter().collect();
+        data.sort_by_key(|(k, _)| *k);
+
         writeln!(writer, "** {}", String::from(fp))?;
         if !fp.name.is_empty() {
             writeln!(writer, "** {}", fp.name)?;
         }
+        let min = data
+            .iter()
+            .min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
+            .map(|(_, a)| *a)
+            .unwrap_or(0.0);
+        let max = data
+            .iter()
+            .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
+            .map(|(_, a)| *a)
+            .unwrap_or(0.0);
+        writeln!(writer, "** Min value: {}, max value: {}", min, max)?;
         writeln!(
             writer,
             "*Initial conditions, type=FIELD, variable={}",
             &fp.id
         )?;
+        for (n, v) in data {
+            writeln!(writer, "{}, {}", n, v)?;
+        }
     }
     Ok(())
 }

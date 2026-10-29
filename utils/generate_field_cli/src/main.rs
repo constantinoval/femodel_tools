@@ -1,9 +1,11 @@
+use femodel::objects::femodel::NodeScalarField;
 use femodel::prelude::*;
 use femodel::utils::generations::{
     FieldProperties, FieldType, GeneratedField, fields_save_to_abaqus,
     norm_distribution_to_mean_std,
 };
 use inquire::{Confirm, Select, Text, validator::Validation};
+use std::collections::HashMap;
 use std::fs;
 
 fn find_files(exts: &[&str]) -> Vec<String> {
@@ -191,5 +193,17 @@ fn main() -> anyhow::Result<()> {
         generated_fields
     };
     fields_save_to_abaqus(&file_name, &generated_fields)?;
+    let names: Vec<String> = generated_fields
+        .iter()
+        .map(|f| format!("F{}", f.field_property.id))
+        .collect();
+    let nodal_fields: Vec<NodeScalarField> = names
+        .iter()
+        .zip(generated_fields.iter())
+        .map(|(name, f)| (name.as_str(), &f.field))
+        .collect();
+    let file_path = std::path::Path::new(&file);
+    let vtk_path = file_path.with_extension("vtk");
+    m.save_vtk(vtk_path.to_str().unwrap(), Some(&nodal_fields), None)?;
     Ok(())
 }
