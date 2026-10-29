@@ -5,6 +5,67 @@ use indicatif::{ParallelProgressIterator, ProgressBar, ProgressStyle};
 use rand_distr::{Distribution, StandardNormal};
 use rayon::prelude::*;
 use std::collections::HashMap;
+use std::io::Write;
+
+#[derive(Debug)]
+pub enum FieldType {
+    Isotropic(f32),
+    Orthotropic((f32, f32, f32)),
+}
+
+#[derive(Debug)]
+pub struct FieldProperties {
+    pub mean: f32,
+    pub std: f32,
+    pub id: u16,
+    pub name: String,
+    pub field_type: FieldType,
+}
+
+impl FieldProperties {
+    pub fn new() -> Self {
+        Self {
+            mean: 0.0,
+            std: 1.0,
+            id: 1,
+            name: "".to_string(),
+            field_type: FieldType::Isotropic(1.0),
+        }
+    }
+}
+
+pub struct GeneratedField {
+    pub field_property: FieldProperties,
+    pub field: HashMap<usize, f32>,
+}
+
+impl From<&FieldType> for String {
+    fn from(value: &FieldType) -> Self {
+        match value {
+            FieldType::Isotropic(l) => format!("isotropic({})", l).to_string(),
+            FieldType::Orthotropic((lx, ly, lz)) => {
+                format!("orthotropic({}, {}, {})", lx, ly, lz).to_string()
+            }
+        }
+    }
+}
+
+impl From<&FieldProperties> for String {
+    fn from(value: &FieldProperties) -> Self {
+        let mut result = "".to_string();
+        result.push_str(
+            &format!(
+                "Field number {}, mean={}, std={}, correlation length: {}",
+                &value.id,
+                &value.mean,
+                &value.std,
+                String::from(&value.field_type)
+            )
+            .to_string(),
+        );
+        result
+    }
+}
 
 impl FEModel {
     /// Генерирует изотропное коррелированное узловое случайное поле с длиной корреляции 2*l
@@ -138,4 +199,44 @@ impl FEModel {
             })
             .collect()
     }
+}
+
+/// Перевод нормального распределение со средним 0 и тандартным отклонением 1
+/// в нормальное распределение со средним *mean* и абсолютным отклонением *std*
+pub fn norm_distribution_to_mean_std(
+    n: &HashMap<usize, f32>,
+    mean: &f32,
+    std: &f32,
+) -> HashMap<usize, f32> {
+    n.par_iter().map(|(&n, z)| (n, mean + std * z)).collect()
+}
+
+/// Стандартизация случайного поля к mean=0, std=1
+pub fn standardize_field(f: &HashMap<usize, f32>) -> HashMap<usize, f32> {
+    let v: Vec<f32> = f.values().copied().collect();
+    let (mean, std) = mean_and_std(&v);
+    if !(std > 0.0) {
+        return f.clone();
+    }
+    f.par_iter().map(|(&k, &x)| (k, (x - mean) / std)).collect()
+}
+
+pub fn fields_save_to_abaqus(file_path: &str, fields: &Vec<GeneratedField>) -> anyhow::Result<()> {
+    let file = std::fs::File::create(file_path)?;
+    let mut writer = std::io::BufWriter::new(file);
+    writeln!(writer, "** Generated random fields")?;
+    for f in fields {
+        let fp = &f.field_property;
+        let data = &f.field;
+        writeln!(writer, "** {}", String::from(fp))?;
+        if !fp.name.is_empty() {
+            writeln!(writer, "** {}", fp.name)?;
+        }
+        writeln!(
+            writer,
+            "*Initial conditions, type=FIELD, variable={}",
+            &fp.id
+        )?;
+    }
+    Ok(())
 }

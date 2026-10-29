@@ -78,25 +78,5 @@ pub fn spacial_hash(crds: &[f64; 3], cell_size: f64) -> (isize, isize, isize) {
     )
 }
 
-/// Перевод нормального распределение со средним 0 и тандартным отклонением 1
-/// в нормальное распределение со средним *mean* и абсолютным отклонением *std*
-pub fn norm_distribution_to_mean_std(
-    n: &HashMap<usize, f32>,
-    mean: f32,
-    std: f32,
-) -> HashMap<usize, f32> {
-    n.par_iter().map(|(&n, z)| (n, mean + std * z)).collect()
-}
-
-/// Стандартизация случайного поля к mean=0, std=1
-pub fn standardize_field(f: &HashMap<usize, f32>) -> HashMap<usize, f32> {
-    let v: Vec<f32> = f.values().copied().collect();
-    let (mean, std) = mean_and_std(&v);
-    if !(std > 0.0) {
-        return f.clone();
-    }
-    f.par_iter().map(|(&k, &x)| (k, (x - mean) / std)).collect()
-}
-
 pub mod generations;
 pub mod geom_utils;

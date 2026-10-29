@@ -1,4 +1,8 @@
 use femodel::prelude::*;
+use femodel::utils::generations::{
+    FieldProperties, FieldType, GeneratedField, fields_save_to_abaqus,
+    norm_distribution_to_mean_std,
+};
 use inquire::{Confirm, Select, Text, validator::Validation};
 use std::fs;
 
@@ -21,12 +25,12 @@ fn find_files(exts: &[&str]) -> Vec<String> {
         .collect()
 }
 
-fn ask_positive_float(message: &str, dflt: f64) -> f64 {
+fn ask_positive_float(message: &str, dflt: f32) -> f32 {
     Text::new(message)
         .with_validator(|input: &str| {
             // поддержка запятой как разделителя
             let normalized = input.trim().replace(',', ".");
-            match normalized.parse::<f64>() {
+            match normalized.parse::<f32>() {
                 Ok(v) if v <= 0.0 => Ok(Validation::Invalid(
                     "Число должно быть положительным".into(),
                 )),
@@ -39,16 +43,16 @@ fn ask_positive_float(message: &str, dflt: f64) -> f64 {
         .expect("Ошибка ввода")
         .trim()
         .replace(',', ".")
-        .parse::<f64>()
+        .parse::<f32>()
         .unwrap()
 }
 
-fn ask_nonnegative_float(message: &str, dflt: f64) -> f64 {
+fn ask_nonnegative_float(message: &str, dflt: f32) -> f32 {
     Text::new(message)
         .with_validator(|input: &str| {
             // поддержка запятой как разделителя
             let normalized = input.trim().replace(',', ".");
-            match normalized.parse::<f64>() {
+            match normalized.parse::<f32>() {
                 Ok(v) if v < 0.0 => Ok(Validation::Invalid(
                     "Число должно быть неотрцательным".into(),
                 )),
@@ -61,7 +65,7 @@ fn ask_nonnegative_float(message: &str, dflt: f64) -> f64 {
         .expect("Ошибка ввода")
         .trim()
         .replace(',', ".")
-        .parse::<f64>()
+        .parse::<f32>()
         .unwrap()
 }
 
@@ -73,33 +77,6 @@ fn ask_positive_int(message: &str, dflt: u16) -> u16 {
         .trim()
         .parse::<u16>()
         .unwrap()
-}
-
-#[derive(Debug)]
-enum FieldType {
-    Isotropic(f64),
-    Orthotropic((f64, f64, f64)),
-}
-
-#[derive(Debug)]
-struct FieldProperties {
-    mean: f64,
-    std: f64,
-    id: u16,
-    name: String,
-    field_type: FieldType,
-}
-
-impl FieldProperties {
-    fn new() -> Self {
-        Self {
-            mean: 0.0,
-            std: 1.0,
-            id: 1,
-            name: "".to_string(),
-            field_type: FieldType::Isotropic(1.0),
-        }
-    }
 }
 
 fn main() -> anyhow::Result<()> {
@@ -159,11 +136,9 @@ fn main() -> anyhow::Result<()> {
             break;
         }
     }
-    let f = m.generate_nodal_correlated_random_field(1.0);
-    dbg!(fields);
     let coupled_fields =
         Confirm::new("Генерировать поля с одинаковым распределением в пространстве?")
-            .with_default(false)
+            .with_default(true)
             .prompt()
             .expect("Ошибка ввода");
     let path = std::path::Path::new(&file);
@@ -181,6 +156,40 @@ fn main() -> anyhow::Result<()> {
         .with_default(format!("{}_{}.{}", name, "fields", ext).as_str())
         .prompt()
         .expect("Ошибка ввода");
-    // let Lc = ask_non_negative_text("Введите размер корреляции:");
+    let generated_fields = if coupled_fields {
+        let mut generated_fields: Vec<GeneratedField> = Vec::new();
+        let std_normal_field = match fields[0].field_type {
+            FieldType::Isotropic(lc) => m.generate_nodal_correlated_random_field(lc / 2.0),
+            FieldType::Orthotropic((lx, ly, lz)) => {
+                m.generate_nodal_correlated_random_field_ortho(lx / 2.0, ly / 2.0, lz / 2.0)
+            }
+        };
+        for f in fields {
+            let data = norm_distribution_to_mean_std(&std_normal_field, &f.mean, &f.std);
+            generated_fields.push(GeneratedField {
+                field_property: f,
+                field: data,
+            });
+        }
+        generated_fields
+    } else {
+        let mut generated_fields: Vec<GeneratedField> = Vec::new();
+        for f in fields {
+            println!("Генерация случайного поля {}", f.id);
+            let std_normal_field = match f.field_type {
+                FieldType::Isotropic(lc) => m.generate_nodal_correlated_random_field(lc / 2.0),
+                FieldType::Orthotropic((lx, ly, lz)) => {
+                    m.generate_nodal_correlated_random_field_ortho(lx / 2.0, ly / 2.0, lz / 2.0)
+                }
+            };
+            let data = norm_distribution_to_mean_std(&std_normal_field, &f.mean, &f.std);
+            generated_fields.push(GeneratedField {
+                field_property: f,
+                field: data,
+            });
+        }
+        generated_fields
+    };
+    fields_save_to_abaqus(&file_name, &generated_fields)?;
     Ok(())
 }
