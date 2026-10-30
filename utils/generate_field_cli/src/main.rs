@@ -202,7 +202,7 @@ fn main() -> anyhow::Result<()> {
         .zip(generated_fields.iter())
         .map(|(name, f)| (name.as_str(), &f.field))
         .collect();
-    let file_path = std::path::Path::new(&file);
+    let file_path = std::path::Path::new(&file_name);
     let vtk_path = file_path.with_extension("vtk");
     m.save_vtk(vtk_path.to_str().unwrap(), Some(&nodal_fields), None)?;
     Ok(())
