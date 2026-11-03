@@ -1,8 +1,8 @@
-use lsmesh::lsmodel::LsModel;
+use femodel::prelude::*;
 use std::time::Instant;
 
 fn main() {
-    let mut m = LsModel::default();
+    let mut m = FEModel::default();
     let start = Instant::now();
     match m.read("last_state_3D.k") {
         Ok(()) => {

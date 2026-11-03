@@ -1,19 +1,19 @@
-use crate::utils::{Matrix3x3, determinant, mean_and_std, renumber_map};
+use crate::utils::{Matrix3x3, determinant, renumber_map};
 use rayon::prelude::*;
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::fmt;
 use std::fs::File;
 use std::io::BufWriter;
 use std::io::Write;
-use std::io::{BufRead, BufReader};
 use std::mem;
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::thread;
 
 use crate::objects::feelement::ElementType;
 use crate::objects::feelement::FEElement;
 use crate::objects::fenode::FENode;
+use crate::readers::abaqus::read_flat_abaqus_input;
+use crate::readers::lsdyna::read_k;
 
 /// Скалярное поле по номеру узла
 pub type NodeScalarField<'a> = (&'a str, &'a HashMap<usize, f32>);
@@ -30,13 +30,6 @@ fn vtk_field_name(name: &str) -> String {
     } else {
         name
     }
-}
-
-enum KwBlock {
-    Node,
-    ElementSolid,
-    ElementShell,
-    Other,
 }
 
 // /// Тип узла сетки
@@ -56,98 +49,6 @@ fn is_contains(st: &HashSet<usize>, val: &usize) -> bool {
     }
 }
 
-fn read_lines(file_path: &str) -> (Vec<String>, Vec<String>, Vec<String>) {
-    let mut nodes: Vec<String> = vec![];
-    let mut solids: Vec<String> = vec![];
-    let mut shells: Vec<String> = vec![];
-    let f = File::open(file_path);
-    if let Err(e) = f {
-        println!("{}", e);
-        return (nodes, solids, shells);
-    }
-    let mut reader = BufReader::new(f.unwrap());
-    let mut kwmode = KwBlock::Other;
-    let mut line_buf = String::with_capacity(256);
-    loop {
-        line_buf.clear();
-        let bytes_read = reader.read_line(&mut line_buf).unwrap();
-        if bytes_read == 0 {
-            break;
-        }
-        let line = line_buf.trim_end();
-        if line.starts_with("*") {
-            kwmode = if line.starts_with("*NODE") {
-                KwBlock::Node
-            } else if line.starts_with("*ELEMENT_SOLID") {
-                KwBlock::ElementSolid
-            } else if line.starts_with("*ELEMENT_SHELL") {
-                KwBlock::ElementShell
-            } else {
-                KwBlock::Other
-            };
-            continue;
-        }
-        if line.starts_with("$") {
-            continue;
-        }
-        match kwmode {
-            KwBlock::Node => nodes.push(line.to_string()),
-            KwBlock::ElementSolid => solids.push(line.to_string()),
-            KwBlock::ElementShell => shells.push(line.to_string()),
-            _ => (),
-        }
-    }
-    (nodes, solids, shells)
-}
-
-pub fn read_k(
-    file_path: &str,
-) -> Result<
-    (
-        BTreeMap<usize, FENode>,
-        BTreeMap<usize, FEElement>,
-        BTreeMap<usize, FEElement>,
-    ),
-    Box<dyn std::error::Error>,
-> {
-    let (node_lines, solid_lines, shell_lines) = read_lines(file_path);
-    // let nodes: BTreeMap<usize, LsNode> = BTreeMap::new();
-    let nodes_handler = thread::spawn(move || {
-        node_lines
-            .par_iter()
-            .map(|item| {
-                let n: FENode = item.as_str().into();
-                (n.n, n)
-            })
-            .collect()
-    });
-    let solids_handler = thread::spawn(move || {
-        solid_lines
-            .par_iter()
-            .map(|item| {
-                let mut e: FEElement = item.as_str().into();
-                e.normalize_nodes();
-                (e.n, e)
-            })
-            .collect()
-    });
-    let shells_handler = thread::spawn(move || {
-        shell_lines
-            .par_iter()
-            .map(|item| {
-                let mut e: FEElement = item.as_str().into();
-                e.normalize_nodes();
-                e.etype = ElementType::SHELL;
-                (e.n, e)
-            })
-            .collect()
-    });
-    let nodes = nodes_handler.join().unwrap();
-    let solids = solids_handler.join().unwrap();
-    let shells = shells_handler.join().unwrap();
-    Ok((nodes, solids, shells))
-}
-
 pub struct FEModel {
     pub nodes: BTreeMap<usize, FENode>,
     pub solids: BTreeMap<usize, FEElement>,
@@ -164,132 +65,6 @@ impl Default for FEModel {
             tolerance: 1e-6,
         }
     }
-}
-
-/// Чтение сетки из файла Abaqus (формат без parts и assembly)
-pub fn read_flat_abaqus_input(
-    file_path: &str,
-) -> anyhow::Result<(
-    BTreeMap<usize, FENode>,
-    BTreeMap<usize, FEElement>,
-    BTreeMap<usize, FEElement>,
-)> {
-    fn split_line(line: &str, sep: char) -> Vec<&str> {
-        line.split(sep)
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .collect()
-    }
-
-    fn parse_node(line: &str) -> Option<FENode> {
-        let parts = split_line(line, ',');
-        let n = parts.first()?.parse::<usize>().ok()?;
-        if n == 0 {
-            return None;
-        };
-        let x: f64 = parts
-            .get(1)
-            .unwrap_or(&"")
-            .parse::<f64>()
-            .unwrap_or_default();
-        let y: f64 = parts
-            .get(2)
-            .unwrap_or(&"")
-            .parse::<f64>()
-            .unwrap_or_default();
-        let z: f64 = parts
-            .get(3)
-            .unwrap_or(&"")
-            .parse::<f64>()
-            .unwrap_or_default();
-        Some(FENode { n, x, y, z })
-    }
-
-    fn parse_element(line: &str, etype: ElementType) -> Option<FEElement> {
-        let parts = split_line(line, ',');
-        let n = parts.first()?.parse::<usize>().ok()?;
-        if n == 0 {
-            return None;
-        }
-        let v: Vec<usize> = parts[1..]
-            .iter()
-            .map(|s| s.parse::<usize>().unwrap_or(0))
-            .collect();
-        let mut nodes = [0usize; 8];
-        let nc = v.len().min(8);
-        nodes[..nc].copy_from_slice(&v[..nc]);
-        Some(FEElement {
-            n,
-            part: 1,
-            etype,
-            nodes,
-            volume: 0.0,
-        })
-    }
-
-    let mut node_lines: Vec<String> = Vec::with_capacity(100000);
-    let mut solid_lines: Vec<String> = Vec::with_capacity(100000);
-    let mut shell_lines: Vec<String> = Vec::with_capacity(100000);
-
-    let mut bt = KwBlock::Other;
-    let f = File::open(file_path)?;
-    let reader = BufReader::new(&f);
-    for l in reader.lines() {
-        let line = l.unwrap_or_default();
-        if line.starts_with("**") {
-            continue;
-        }
-        if line.starts_with("*") {
-            let kw = line[1..]
-                .split(',')
-                .map(|s| s.trim().to_lowercase())
-                .collect::<Vec<String>>();
-            bt = match kw[0].as_str() {
-                "node" => KwBlock::Node,
-                "element" => {
-                    let etype = kw[1].split("=").last().unwrap_or("").trim();
-                    match etype {
-                        "c3d8" | "c3d8r" => KwBlock::ElementSolid,
-                        "cax4r" => KwBlock::ElementShell,
-                        _ => KwBlock::Other,
-                    }
-                }
-                _ => KwBlock::Other,
-            };
-            continue;
-        }
-        match bt {
-            KwBlock::Node => node_lines.push(line),
-            KwBlock::ElementSolid => solid_lines.push(line),
-            KwBlock::ElementShell => shell_lines.push(line),
-            KwBlock::Other => {}
-        }
-    }
-
-    let nodes: BTreeMap<usize, FENode> = node_lines
-        .par_iter()
-        .filter_map(|l| {
-            let nd = parse_node(l)?;
-            Some((nd.n, nd))
-        })
-        .collect();
-
-    let solids: BTreeMap<usize, FEElement> = solid_lines
-        .par_iter()
-        .filter_map(|l| {
-            let e = parse_element(l, ElementType::SOLID)?;
-            Some((e.n, e))
-        })
-        .collect();
-
-    let shells: BTreeMap<usize, FEElement> = shell_lines
-        .par_iter()
-        .filter_map(|l| {
-            let e = parse_element(l, ElementType::SHELL)?;
-            Some((e.n, e))
-        })
-        .collect();
-    Ok((nodes, solids, shells))
 }
 
 impl FEModel {

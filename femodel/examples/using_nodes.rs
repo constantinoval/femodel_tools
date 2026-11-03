@@ -1,7 +1,7 @@
-use lsmesh::lsmodel::lsnode::LsNode;
+use femodel::prelude::*;
 
 fn main() {
-    let mut n = LsNode {
+    let mut n = FENode {
         x: 0.0,
         y: 0.0,
         z: 0.0,
@@ -29,12 +29,12 @@ fn main() {
     println!("{}", n);
     // let n: u32 = parse("       100", 0, 10);
     // println!("{}", n);
-    let n: LsNode = "     100            10.1            20.2            30.3".into();
+    let n: FENode = "     100            10.1            20.2            30.3".into();
     println!("{}", n);
-    let n: LsNode = "1, 2.1, 3.2\n".into();
+    let n: FENode = "1, 2.1, 3.2\n".into();
     dbg!(&n);
     // let s: String = (&n).into();
     println!("{}", <String>::from(&n));
-    let n = LsNode::from("       1               2               0              -5");
+    let n = FENode::from("       1               2               0              -5");
     println!("{:?}", n.spacial_hash(1.0));
 }

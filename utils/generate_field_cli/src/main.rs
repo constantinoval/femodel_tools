@@ -5,7 +5,6 @@ use femodel::utils::generations::{
     norm_distribution_to_mean_std,
 };
 use inquire::{Confirm, Select, Text, validator::Validation};
-use std::collections::HashMap;
 use std::fs;
 
 fn find_files(exts: &[&str]) -> Vec<String> {

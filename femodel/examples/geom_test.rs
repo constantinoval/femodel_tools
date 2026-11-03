@@ -1,5 +1,5 @@
-use lsmesh::lsmodel::geom_utils::Vector3D;
-use lsmesh::vec3d;
+use femodel::utils::geom_utils::Vector3D;
+use femodel::vec3d;
 
 fn main() {
     let mut p = Vector3D {

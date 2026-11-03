@@ -1,6 +1,5 @@
-use lsmesh::lsmodel::geom_utils::Quarternion;
-use lsmesh::lsmodel::geom_utils::Vector3D;
-use lsmesh::vec3d;
+use femodel::utils::geom_utils::Quarternion;
+use femodel::vec3d;
 
 fn main() {
     let q = Quarternion::new(180.0, vec3d![0.0, 10.0, 0.0]);

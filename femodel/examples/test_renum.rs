@@ -1,12 +1,9 @@
-use lsmesh::lsmodel::LsModel;
-use lsmesh::lsmodel::lsnode::LsNode;
-use lsmesh::lsmodel::utils::renumber_map;
-use std::collections::{BTreeMap, HashSet};
+use femodel::prelude::*;
 use std::time::Instant;
 
 fn main() {
     let start = Instant::now();
-    let mut m = LsModel::default();
+    let mut m = FEModel::default();
     match m.read("2_shells_2_solids.k") {
         Ok(()) => {
             let duration = start.elapsed();
@@ -24,7 +21,7 @@ fn main() {
             println!("{:?}, {:?}", m.solids, m.shells);
             m.renumber_parts(10);
             println!("{:?}, {:?}", m.solids, m.shells);
-            m.save("1.k");
+            let _ = m.save("1.k");
         }
         Err(msg) => println!("Error: {msg}"),
     }
