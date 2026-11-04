@@ -159,7 +159,7 @@ pub fn read_flat_abaqus_input(
                 "element" => {
                     let etype = kw[1].split("=").last().unwrap_or("").trim();
                     match etype {
-                        "c3d8" | "c3d8r | c3d4" => KwBlock::ElementSolid,
+                        "c3d8" | "c3d8r" | "c3d4" => KwBlock::ElementSolid,
                         "cax4r" => KwBlock::ElementShell,
                         _ => KwBlock::Other,
                     }

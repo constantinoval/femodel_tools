@@ -106,6 +106,10 @@ fn main() -> anyhow::Result<()> {
         let mut fp = FieldProperties::new();
         fp.mean = ask_nonnegative_float("Среднее значение генерируемого поля:", 0.0);
         fp.std = ask_positive_float("Стандартное отклонение генерируемого поля:", 1.0);
+        fp.inverse = Confirm::new("Инвертировать поле?")
+            .with_default(false)
+            .prompt()
+            .expect("Ошибка ввода");
         fp.id = ask_positive_int("Номер поля для записи в файл:", 1);
         fp.name = Text::new("Имя или комментарий к полю:")
             .with_help_message("Например: напряжение течения | ef")
@@ -166,7 +170,8 @@ fn main() -> anyhow::Result<()> {
             }
         };
         for f in fields {
-            let data = norm_distribution_to_mean_std(&std_normal_field, &f.mean, &f.std);
+            let std = if f.inverse { -f.std } else { f.std };
+            let data = norm_distribution_to_mean_std(&std_normal_field, &f.mean, &std);
             generated_fields.push(GeneratedField {
                 field_property: f,
                 field: data,

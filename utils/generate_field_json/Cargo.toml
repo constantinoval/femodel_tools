@@ -1,0 +1,9 @@
+[package]
+name = "generate_field_json"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+femodel = {path = "../../femodel", features=["serde"]}

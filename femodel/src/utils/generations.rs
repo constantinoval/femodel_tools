@@ -7,12 +7,14 @@ use rayon::prelude::*;
 use std::collections::HashMap;
 use std::io::Write;
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug)]
 pub enum FieldType {
     Isotropic(f32),
     Orthotropic((f32, f32, f32)),
 }
 
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[derive(Debug)]
 pub struct FieldProperties {
     pub mean: f32,
@@ -20,6 +22,7 @@ pub struct FieldProperties {
     pub id: u16,
     pub name: String,
     pub field_type: FieldType,
+    pub inverse: bool,
 }
 
 impl FieldProperties {
@@ -30,6 +33,7 @@ impl FieldProperties {
             id: 1,
             name: "".to_string(),
             field_type: FieldType::Isotropic(1.0),
+            inverse: false,
         }
     }
 }
