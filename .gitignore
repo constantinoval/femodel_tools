@@ -1,3 +1,4 @@
 **/target
 *.inp
 *.k
+*.vtk
