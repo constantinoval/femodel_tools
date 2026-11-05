@@ -1,0 +1,15 @@
+{
+  "field_properties":[
+    {
+      "mean":100.0,
+      "std":10.0,
+      "id":1,
+      "name":"sigma0",
+      "field_type":{"Isotropic":1.0},
+      "inverse":false
+    }
+  ],
+  "coupled":true,
+  "mesh_file":"mesh.inp",
+  "output":"1.inp"
+}

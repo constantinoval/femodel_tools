@@ -262,6 +262,7 @@ dependencies = [
 name = "generate_field_json"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "femodel",
  "serde",
  "serde_json",

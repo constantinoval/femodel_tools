@@ -7,3 +7,4 @@ edition = "2024"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 femodel = {path = "../../femodel", features=["serde"]}
+anyhow = "1.0.104"
