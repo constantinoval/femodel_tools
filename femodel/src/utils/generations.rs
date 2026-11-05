@@ -1,4 +1,4 @@
-use crate::objects::femodel::FEModel;
+use crate::objects::femodel::{FEModel, NodeScalarField};
 use crate::utils::mean_and_std;
 use fast_math;
 use indicatif::{ParallelProgressIterator, ProgressBar, ProgressStyle};
@@ -200,6 +200,39 @@ impl FEModel {
                 }
                 let sum: f32 = (0..n).map(|nn| f[&el.nodes[nn]]).sum();
                 Some((en, sum / n as f32))
+            })
+            .collect()
+    }
+
+    /// Ремапинг узлового поля на новую модель
+    /// метод ближайшего соседа
+    pub fn remap_to_model_by_nearest(
+        &self,
+        cell_size: f32,
+        other: &FEModel,
+        nodal_field: &HashMap<usize, f32>,
+    ) -> HashMap<usize, f32> {
+        // let mut new_field: HashMap<usize, f32> = HashMap::with_capacity(other.nodes.len());
+        let sh = self.nodes_spacial_hash(cell_size);
+        other
+            .nodes
+            .par_iter()
+            .map(|(_, v)| v)
+            .filter_map(|n| {
+                let nodes_d2 = self.node_neibors_with_distances2(n, &sh, cell_size, cell_size);
+                let nn = nodes_d2
+                    .iter()
+                    .min_by(|a, b| a.1.total_cmp(b.1))
+                    .map(|(&n, _)| n);
+                if let Some(num) = nn {
+                    if let Some(&val) = nodal_field.get(&num) {
+                        Some((n.n, val))
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
             })
             .collect()
     }
