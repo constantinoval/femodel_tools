@@ -26,8 +26,9 @@ fn main() -> anyhow::Result<()> {
     let reader = BufReader::new(f);
     let config: JsonConfig = serde_json::from_reader(reader)?;
     let mut m = FEModel::default();
-    println!("Чтение сетки");
+    println!("Чтение сетки...");
     m.read(&config.mesh_file).map_err(anyhow::Error::msg)?;
+    println!("Генерация случайных полей...");
     let generated_fields = if config.coupled {
         let mut generated_fields: Vec<GeneratedField> = Vec::new();
         let std_normal_field = match config.field_properties[0].field_type {
@@ -63,6 +64,7 @@ fn main() -> anyhow::Result<()> {
         }
         generated_fields
     };
+    println!("Сохранение данных...");
     fields_save_to_abaqus(&config.output, &generated_fields)?;
     let names: Vec<String> = generated_fields
         .iter()
