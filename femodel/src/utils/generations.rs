@@ -206,6 +206,7 @@ impl FEModel {
 
     /// Ремапинг узлового поля на новую модель
     /// метод ближайшего соседа
+    /// рекомендуется cell_size - размер наиболее грубой сетки из двух (исходной и на которую происходит перенос поля)
     pub fn remap_to_model_by_nearest(
         &self,
         cell_size: f32,
@@ -233,6 +234,36 @@ impl FEModel {
                 } else {
                     None
                 }
+            })
+            .collect()
+    }
+
+    /// Ремапинг узлового моля на новую модель
+    /// с использованием метода обратного взвешивания расстояний (IDW)
+    /// рекомендуется cell_size - размер наиболее грубой сетки из двух (исходной и на которую происходит перенос поля)
+    pub fn remap_to_model_by_idw(
+        &self,
+        cell_size: f32,
+        other: &FEModel,
+        nodal_field: &HashMap<usize, f32>,
+    ) -> HashMap<usize, f32> {
+        // let mut new_field: HashMap<usize, f32> = HashMap::with_capacity(other.nodes.len());
+        let sh = self.nodes_spacial_hash(cell_size);
+        other
+            .nodes
+            .par_iter()
+            .map(|(_, v)| v)
+            .map(|n| {
+                let nodes_d2 = self.node_neibors_with_distances2(n, &sh, cell_size, cell_size);
+                let (e, d) = nodes_d2.iter().fold((0.0, 0.0), |(e, d), (n, d2)| {
+                    let w = if d2 < &(cell_size / 1000.0) {
+                        1e6
+                    } else {
+                        1.0 / d2
+                    };
+                    (e + nodal_field[n] * w, d + w)
+                });
+                (n.n, e / d)
             })
             .collect()
     }

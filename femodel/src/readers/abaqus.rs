@@ -1,9 +1,10 @@
 use crate::objects::feelement::ElementType;
 use crate::prelude::*;
 use crate::readers::common_types::*;
+use anyhow::Context;
 use rayon::prelude::*;
 use regex::Regex;
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::fs::File;
 use std::io::{BufRead, BufReader};
 
@@ -200,4 +201,61 @@ pub fn read_flat_abaqus_input(
         })
         .collect();
     Ok((nodes, solids, shells))
+}
+
+/// Читает из inp файла скалярные поля записанные ключевым словом *Initial conditions, type=FIELD
+pub fn read_nodal_fields_from_inp(
+    file_path: &str,
+) -> anyhow::Result<HashMap<usize, HashMap<usize, f32>>> {
+    fn process_data_lines(data_lines: &Vec<String>) -> HashMap<usize, f32> {
+        data_lines
+            .par_iter()
+            .filter_map(|line| {
+                let mut it = line.split(',');
+                let n = it.next()?.trim().parse::<usize>().ok()?;
+                let f = it.next()?.trim().parse::<f32>().ok()?;
+                Some((n, f))
+            })
+            .collect()
+    }
+
+    let mut result: HashMap<usize, HashMap<usize, f32>> = HashMap::new();
+    let f = File::open(file_path)?;
+    let reader = BufReader::new(f);
+    let mut inside_block = false;
+    let mut data_lines: Vec<String> = Vec::new();
+    let mut field_id: usize = 0;
+    let ic_regex =
+        Regex::new(r"^*Initial conditions,\s*type=FIELD,\s*variable\s*=\s*(?P<id>\d+).*").unwrap();
+    for line in reader.lines() {
+        let line = line?;
+        if line.starts_with("**") {
+            continue;
+        }
+        if line.starts_with("*") {
+            if !data_lines.is_empty() {
+                result.insert(field_id, process_data_lines(&data_lines));
+                data_lines.clear();
+            }
+            if let Some(id) = ic_regex
+                .captures(&line)
+                .context("Can't capture")?
+                .name("id")
+            {
+                field_id = id.as_str().parse::<usize>()?;
+                data_lines.clear();
+                inside_block = true;
+            } else {
+                inside_block = false;
+            }
+        }
+        if inside_block {
+            data_lines.push(line);
+        }
+    }
+    if !data_lines.is_empty() {
+        result.insert(field_id, process_data_lines(&data_lines));
+        data_lines.clear();
+    }
+    Ok(result)
 }

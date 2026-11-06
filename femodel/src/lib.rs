@@ -1,5 +1,5 @@
 pub mod objects;
-pub(crate) mod readers;
+pub mod readers;
 pub mod utils;
 
 pub mod prelude {
