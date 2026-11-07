@@ -11,7 +11,7 @@ use std::io::Write;
 #[derive(Debug)]
 pub enum FieldType {
     Isotropic(f32),
-    Orthotropic((f32, f32, f32)),
+    Orthotropic(f32, f32, f32),
 }
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -47,7 +47,7 @@ impl From<&FieldType> for String {
     fn from(value: &FieldType) -> Self {
         match value {
             FieldType::Isotropic(l) => format!("isotropic(Lc={})", l).to_string(),
-            FieldType::Orthotropic((lx, ly, lz)) => {
+            FieldType::Orthotropic(lx, ly, lz) => {
                 format!("orthotropic(Lx={}, Ly={}, Lz={})", lx, ly, lz).to_string()
             }
         }
@@ -267,6 +267,19 @@ impl FEModel {
             })
             .collect()
     }
+
+    pub fn generate_field_using_property_object(
+        &self,
+        fp: &FieldProperties,
+    ) -> HashMap<usize, f32> {
+        let normal_dist = match fp.field_type {
+            FieldType::Isotropic(l) => self.generate_nodal_correlated_random_field(l / 2.0),
+            FieldType::Orthotropic(lx, ly, lz) => {
+                self.generate_nodal_correlated_random_field_ortho(lx / 2.0, ly / 2.0, lz / 2.0)
+            }
+        };
+        norm_distribution_to_mean_std(&normal_dist, &fp.mean, &fp.std)
+    }
 }
 
 /// Перевод нормального распределение со средним 0 и тандартным отклонением 1
@@ -289,7 +302,11 @@ pub fn standardize_field(f: &HashMap<usize, f32>) -> HashMap<usize, f32> {
     f.par_iter().map(|(&k, &x)| (k, (x - mean) / std)).collect()
 }
 
-pub fn fields_save_to_abaqus(file_path: &str, fields: &Vec<GeneratedField>) -> anyhow::Result<()> {
+pub fn fields_save_to_abaqus(
+    file_path: &str,
+    fields: &Vec<GeneratedField>,
+    put_min_max: bool,
+) -> anyhow::Result<()> {
     let file = std::fs::File::create(file_path)?;
     let mut writer = std::io::BufWriter::new(file);
     writeln!(writer, "** Generated random fields")?;
@@ -302,17 +319,19 @@ pub fn fields_save_to_abaqus(file_path: &str, fields: &Vec<GeneratedField>) -> a
         if !fp.name.is_empty() {
             writeln!(writer, "** {}", fp.name)?;
         }
-        let min = data
-            .iter()
-            .min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
-            .map(|(_, a)| *a)
-            .unwrap_or(0.0);
-        let max = data
-            .iter()
-            .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
-            .map(|(_, a)| *a)
-            .unwrap_or(0.0);
-        writeln!(writer, "** Min value: {}, max value: {}", min, max)?;
+        if put_min_max {
+            let min = data
+                .iter()
+                .min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
+                .map(|(_, a)| *a)
+                .unwrap_or(0.0);
+            let max = data
+                .iter()
+                .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
+                .map(|(_, a)| *a)
+                .unwrap_or(0.0);
+            writeln!(writer, "** Min value: {}, max value: {}", min, max)?;
+        }
         writeln!(
             writer,
             "*Initial conditions, type=FIELD, variable={}",
@@ -322,5 +341,45 @@ pub fn fields_save_to_abaqus(file_path: &str, fields: &Vec<GeneratedField>) -> a
             writeln!(writer, "{}, {}", n, v)?;
         }
     }
+    Ok(())
+}
+
+pub fn save_fields_to_lsdyna(
+    file_path: &str,
+    fields: &Vec<GeneratedField>,
+    put_min_max: bool,
+) -> anyhow::Result<()> {
+    let file = std::fs::File::create(file_path)?;
+    let mut writer = std::io::BufWriter::new(file);
+    writeln!(writer, "*KEYWORD")?;
+    for f in fields {
+        let fp = &f.field_property;
+        let mut data: Vec<(usize, f32)> = f.field.clone().into_iter().collect();
+        data.sort_by_key(|(k, _)| *k);
+
+        writeln!(writer, "$ {}", String::from(fp))?;
+        if !fp.name.is_empty() {
+            writeln!(writer, "$ {}", fp.name)?;
+        }
+        if put_min_max {
+            let min = data
+                .iter()
+                .min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
+                .map(|(_, a)| *a)
+                .unwrap_or(0.0);
+            let max = data
+                .iter()
+                .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
+                .map(|(_, a)| *a)
+                .unwrap_or(0.0);
+            writeln!(writer, "$ Min value: {}, max value: {}", min, max)?;
+        }
+        writeln!(writer, "*INITIAL_HISTORY_NODE")?;
+        for (n, v) in data {
+            writeln!(writer, " {:>9}         1", n)?;
+            writeln!(writer, " {:>9} {:9.4e}", fp.id, v)?;
+        }
+    }
+    writeln!(writer, "*END")?;
     Ok(())
 }

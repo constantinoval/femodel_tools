@@ -2,9 +2,10 @@ use femodel::objects::femodel::NodeScalarField;
 use femodel::prelude::*;
 use femodel::utils::generations::{
     FieldProperties, FieldType, GeneratedField, fields_save_to_abaqus,
-    norm_distribution_to_mean_std,
+    norm_distribution_to_mean_std, save_fields_to_lsdyna,
 };
 use inquire::{Confirm, Select, Text, validator::Validation};
+use std::ffi::OsStr;
 use std::fs;
 
 fn find_files(exts: &[&str]) -> Vec<String> {
@@ -128,7 +129,7 @@ fn main() -> anyhow::Result<()> {
                 let lx = ask_positive_float("Масштаб корреляции по оси 0X Lx:", 1.0);
                 let ly = ask_positive_float("Масштаб корреляции по оси 0Y Ly:", 1.0);
                 let lz = ask_positive_float("Масштаб корреляции по оси 0Z Lz:", 1.0);
-                fp.field_type = FieldType::Orthotropic((lx, ly, lz));
+                fp.field_type = FieldType::Orthotropic(lx, ly, lz);
             }
             _ => {}
         }
@@ -165,7 +166,7 @@ fn main() -> anyhow::Result<()> {
         let mut generated_fields: Vec<GeneratedField> = Vec::new();
         let std_normal_field = match fields[0].field_type {
             FieldType::Isotropic(lc) => m.generate_nodal_correlated_random_field(lc / 2.0),
-            FieldType::Orthotropic((lx, ly, lz)) => {
+            FieldType::Orthotropic(lx, ly, lz) => {
                 m.generate_nodal_correlated_random_field_ortho(lx / 2.0, ly / 2.0, lz / 2.0)
             }
         };
@@ -184,7 +185,7 @@ fn main() -> anyhow::Result<()> {
             println!("Генерация случайного поля {}", f.id);
             let std_normal_field = match f.field_type {
                 FieldType::Isotropic(lc) => m.generate_nodal_correlated_random_field(lc / 2.0),
-                FieldType::Orthotropic((lx, ly, lz)) => {
+                FieldType::Orthotropic(lx, ly, lz) => {
                     m.generate_nodal_correlated_random_field_ortho(lx / 2.0, ly / 2.0, lz / 2.0)
                 }
             };
@@ -196,7 +197,13 @@ fn main() -> anyhow::Result<()> {
         }
         generated_fields
     };
-    fields_save_to_abaqus(&file_name, &generated_fields)?;
+    let file_path = std::path::Path::new(&file_name);
+    match file_path.extension().and_then(|e| e.to_str()) {
+        Some("inp") => fields_save_to_abaqus(&file_name, &generated_fields, true)?,
+        Some("k") => save_fields_to_lsdyna(&file_name, &generated_fields, true)?,
+        Some(other) => println!("File type with extension {other} not supported"),
+        None => println!("There is no extension in output file"),
+    }
     let names: Vec<String> = generated_fields
         .iter()
         .map(|f| format!("F{}", f.field_property.id))
@@ -206,7 +213,6 @@ fn main() -> anyhow::Result<()> {
         .zip(generated_fields.iter())
         .map(|(name, f)| (name.as_str(), &f.field))
         .collect();
-    let file_path = std::path::Path::new(&file_name);
     let vtk_path = file_path.with_extension("vtk");
     m.save_vtk(vtk_path.to_str().unwrap(), Some(&nodal_fields), None)?;
     Ok(())

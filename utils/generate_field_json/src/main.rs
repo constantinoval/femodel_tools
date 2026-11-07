@@ -33,7 +33,7 @@ fn main() -> anyhow::Result<()> {
         let mut generated_fields: Vec<GeneratedField> = Vec::new();
         let std_normal_field = match config.field_properties[0].field_type {
             FieldType::Isotropic(lc) => m.generate_nodal_correlated_random_field(lc / 2.0),
-            FieldType::Orthotropic((lx, ly, lz)) => {
+            FieldType::Orthotropic(lx, ly, lz) => {
                 m.generate_nodal_correlated_random_field_ortho(lx / 2.0, ly / 2.0, lz / 2.0)
             }
         };
@@ -52,7 +52,7 @@ fn main() -> anyhow::Result<()> {
             println!("Генерация случайного поля {}", f.id);
             let std_normal_field = match f.field_type {
                 FieldType::Isotropic(lc) => m.generate_nodal_correlated_random_field(lc / 2.0),
-                FieldType::Orthotropic((lx, ly, lz)) => {
+                FieldType::Orthotropic(lx, ly, lz) => {
                     m.generate_nodal_correlated_random_field_ortho(lx / 2.0, ly / 2.0, lz / 2.0)
                 }
             };
@@ -65,7 +65,7 @@ fn main() -> anyhow::Result<()> {
         generated_fields
     };
     println!("Сохранение данных...");
-    fields_save_to_abaqus(&config.output, &generated_fields)?;
+    fields_save_to_abaqus(&config.output, &generated_fields, true)?;
     let names: Vec<String> = generated_fields
         .iter()
         .map(|f| format!("F{}", f.field_property.id))
