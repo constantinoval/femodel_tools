@@ -1,10 +1,13 @@
 use crate::objects::femodel::{FEModel, NodeScalarField};
 use crate::utils::mean_and_std;
+use anyhow::Context;
 use fast_math;
 use indicatif::{ParallelProgressIterator, ProgressBar, ProgressStyle};
 use rand_distr::{Distribution, StandardNormal};
 use rayon::prelude::*;
 use std::collections::HashMap;
+use std::collections::hash_map::Keys;
+use std::fmt;
 use std::io::Write;
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -302,40 +305,19 @@ pub fn standardize_field(f: &HashMap<usize, f32>) -> HashMap<usize, f32> {
     f.par_iter().map(|(&k, &x)| (k, (x - mean) / std)).collect()
 }
 
-pub fn fields_save_to_abaqus(
-    file_path: &str,
-    fields: &Vec<GeneratedField>,
-    put_min_max: bool,
-) -> anyhow::Result<()> {
+pub fn save_fields_to_abaqus(file_path: &str, fields: &Vec<&RandomField>) -> anyhow::Result<()> {
     let file = std::fs::File::create(file_path)?;
     let mut writer = std::io::BufWriter::new(file);
     writeln!(writer, "** Generated random fields")?;
-    for f in fields {
-        let fp = &f.field_property;
-        let mut data: Vec<(usize, f32)> = f.field.clone().into_iter().collect();
+    for &f in fields {
+        let mut data: Vec<(usize, f32)> = f.data.clone().into_iter().collect();
         data.sort_by_key(|(k, _)| *k);
 
-        writeln!(writer, "** {}", String::from(fp))?;
-        if !fp.name.is_empty() {
-            writeln!(writer, "** {}", fp.name)?;
-        }
-        if put_min_max {
-            let min = data
-                .iter()
-                .min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
-                .map(|(_, a)| *a)
-                .unwrap_or(0.0);
-            let max = data
-                .iter()
-                .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
-                .map(|(_, a)| *a)
-                .unwrap_or(0.0);
-            writeln!(writer, "** Min value: {}, max value: {}", min, max)?;
-        }
+        writeln!(writer, "** {}", f)?;
         writeln!(
             writer,
             "*Initial conditions, type=FIELD, variable={}",
-            &fp.id
+            &f.id
         )?;
         for (n, v) in data {
             writeln!(writer, "{}, {}", n, v)?;
@@ -344,42 +326,123 @@ pub fn fields_save_to_abaqus(
     Ok(())
 }
 
-pub fn save_fields_to_lsdyna(
-    file_path: &str,
-    fields: &Vec<GeneratedField>,
-    put_min_max: bool,
-) -> anyhow::Result<()> {
+pub fn save_fields_to_lsdyna(file_path: &str, fields: &Vec<&RandomField>) -> anyhow::Result<()> {
+    let n = fields.len();
+    if n == 0 {
+        return Err(anyhow::anyhow!("Пустой набор случайных полей"));
+    }
     let file = std::fs::File::create(file_path)?;
     let mut writer = std::io::BufWriter::new(file);
     writeln!(writer, "*KEYWORD")?;
-    for f in fields {
-        let fp = &f.field_property;
-        let mut data: Vec<(usize, f32)> = f.field.clone().into_iter().collect();
-        data.sort_by_key(|(k, _)| *k);
-
-        writeln!(writer, "$ {}", String::from(fp))?;
-        if !fp.name.is_empty() {
-            writeln!(writer, "$ {}", fp.name)?;
-        }
-        if put_min_max {
-            let min = data
-                .iter()
-                .min_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
-                .map(|(_, a)| *a)
-                .unwrap_or(0.0);
-            let max = data
-                .iter()
-                .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap())
-                .map(|(_, a)| *a)
-                .unwrap_or(0.0);
-            writeln!(writer, "$ Min value: {}, max value: {}", min, max)?;
-        }
-        writeln!(writer, "*INITIAL_HISTORY_NODE")?;
-        for (n, v) in data {
-            writeln!(writer, " {:>9}         1", n)?;
-            writeln!(writer, " {:>9} {:9.4e}", fp.id, v)?;
+    for f in fields.iter() {
+        writeln!(writer, "$ {}", f)?;
+    }
+    writeln!(writer, "*INITIAL_HISTORY_NODE")?;
+    let mut node_numbers: Vec<usize> = fields[0].data.keys().cloned().collect();
+    node_numbers.sort_unstable();
+    for n_id in node_numbers {
+        writeln!(writer, " {:>9} {:>9}", n_id, n)?;
+        for i in 0..n {
+            let rf = fields[i];
+            if let Some(v) = rf.data.get(&n_id) {
+                writeln!(writer, " {:>9} {:9.4e}", rf.id, v)?;
+            }
         }
     }
     writeln!(writer, "*END")?;
     Ok(())
+}
+
+pub struct Perturbation {
+    pub normal_field: HashMap<usize, f32>,
+    pub field_type: FieldType,
+}
+
+impl Perturbation {
+    pub fn new(model: &FEModel, field_type: FieldType) -> Self {
+        match field_type {
+            FieldType::Isotropic(lc) => Self {
+                normal_field: model.generate_nodal_correlated_random_field(lc / 2.0),
+                field_type: field_type,
+            },
+            FieldType::Orthotropic(lx, ly, lz) => Self {
+                normal_field: model.generate_nodal_correlated_random_field_ortho(
+                    lx / 2.0,
+                    ly / 2.0,
+                    lz / 2.0,
+                ),
+                field_type: field_type,
+            },
+        }
+    }
+
+    pub fn node_normalized_value(&self, nd_id: usize, mean: f32, std: f32) -> anyhow::Result<f32> {
+        let v = self
+            .normal_field
+            .get(&nd_id)
+            .context("В объекте perturbation нет узла с заданным идентификатором")?;
+        Ok(mean + std * v)
+    }
+
+    pub fn node_ids(&self) -> Keys<'_, usize, f32> {
+        self.normal_field.keys()
+    }
+
+    pub fn generate_for_norm_std(&self, mean: f32, std: f32) -> HashMap<usize, f32> {
+        self.normal_field
+            .iter()
+            .map(|(&n, &v)| (n, mean + std * v))
+            .collect()
+    }
+}
+
+pub struct RandomField {
+    pub id: usize,
+    pub name: String,
+    pub description: String,
+    pub data: HashMap<usize, f32>,
+}
+
+impl RandomField {
+    pub fn new() -> Self {
+        Self {
+            id: 1,
+            name: "".to_string(),
+            description: "".to_string(),
+            data: HashMap::new(),
+        }
+    }
+
+    pub fn with_id(mut self, id: usize) -> Self {
+        self.id = id;
+        self
+    }
+
+    pub fn with_name(mut self, name: String) -> Self {
+        self.name = name;
+        self
+    }
+
+    pub fn generate(mut self, p: &Perturbation, mean: f32, std: f32, inverse: bool) -> Self {
+        let std = if inverse { -std } else { std };
+        self.data = p.generate_for_norm_std(mean, std);
+        self.description = format!(
+            "mean: {}, std: {}, Field type: {:?}, inverse: {}",
+            mean, std, p.field_type, inverse
+        );
+        self
+    }
+}
+
+impl fmt::Display for RandomField {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "Random field {} ({}): {} values, {}",
+            self.id,
+            self.name,
+            self.data.len(),
+            self.description
+        )
+    }
 }
