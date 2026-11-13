@@ -1,8 +1,7 @@
 use anyhow::{self, Context};
 use femodel::prelude::*;
-use femodel::utils::generations::norm_distribution_to_mean_std;
 use femodel::utils::generations::{
-    FieldProperties, FieldType, GeneratedField, fields_save_to_abaqus,
+    FieldType, Perturbation, RandomField, save_fields_to_abaqus, save_fields_to_lsdyna,
 };
 use serde::{Deserialize, Serialize};
 use std::env;
@@ -10,11 +9,26 @@ use std::fs::File;
 use std::io::BufReader;
 
 #[derive(Serialize, Deserialize, Debug)]
+struct FieldPropertiesJson {
+    id: usize,
+    name: String,
+    mean: f32,
+    std: f32,
+    invert: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct RandomFieldsJson {
+    field_type: FieldType,
+    properties: Vec<FieldPropertiesJson>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
 struct JsonConfig {
-    field_properties: Vec<FieldProperties>,
-    coupled: bool,
     mesh_file: String,
     output: String,
+    save_vtk: bool,
+    fields: Vec<RandomFieldsJson>,
 }
 
 fn main() -> anyhow::Result<()> {
@@ -28,55 +42,47 @@ fn main() -> anyhow::Result<()> {
     let mut m = FEModel::default();
     println!("Чтение сетки...");
     m.read(&config.mesh_file).map_err(anyhow::Error::msg)?;
+    let mut random_fields: Vec<RandomField> = Vec::new();
     println!("Генерация случайных полей...");
-    let generated_fields = if config.coupled {
-        let mut generated_fields: Vec<GeneratedField> = Vec::new();
-        let std_normal_field = match config.field_properties[0].field_type {
-            FieldType::Isotropic(lc) => m.generate_nodal_correlated_random_field(lc / 2.0),
-            FieldType::Orthotropic(lx, ly, lz) => {
-                m.generate_nodal_correlated_random_field_ortho(lx / 2.0, ly / 2.0, lz / 2.0)
-            }
-        };
-        for f in config.field_properties {
-            let std = if f.inverse { -f.std } else { f.std };
-            let data = norm_distribution_to_mean_std(&std_normal_field, &f.mean, &std);
-            generated_fields.push(GeneratedField {
-                field_property: f,
-                field: data,
-            });
+    for fields in config.fields {
+        let pert = Perturbation::new(&m, fields.field_type);
+        for props in fields.properties {
+            let rf = RandomField::new()
+                .with_id(props.id)
+                .with_name(props.name)
+                .generate(&pert, props.mean, props.std, props.invert);
+            random_fields.push(rf);
         }
-        generated_fields
-    } else {
-        let mut generated_fields: Vec<GeneratedField> = Vec::new();
-        for f in config.field_properties {
-            println!("Генерация случайного поля {}", f.id);
-            let std_normal_field = match f.field_type {
-                FieldType::Isotropic(lc) => m.generate_nodal_correlated_random_field(lc / 2.0),
-                FieldType::Orthotropic(lx, ly, lz) => {
-                    m.generate_nodal_correlated_random_field_ortho(lx / 2.0, ly / 2.0, lz / 2.0)
-                }
-            };
-            let data = norm_distribution_to_mean_std(&std_normal_field, &f.mean, &f.std);
-            generated_fields.push(GeneratedField {
-                field_property: f,
-                field: data,
-            });
-        }
-        generated_fields
-    };
+    }
     println!("Сохранение данных...");
-    fields_save_to_abaqus(&config.output, &generated_fields, true)?;
-    let names: Vec<String> = generated_fields
-        .iter()
-        .map(|f| format!("F{}", f.field_property.id))
-        .collect();
-    let nodal_fields: Vec<NodeScalarField> = names
-        .iter()
-        .zip(generated_fields.iter())
-        .map(|(name, f)| (name.as_str(), &f.field))
-        .collect();
     let file_path = std::path::Path::new(&config.output);
-    let vtk_path = file_path.with_extension("vtk");
-    m.save_vtk(vtk_path.to_str().unwrap(), Some(&nodal_fields), None)?;
+    match file_path.extension().and_then(|e| e.to_str()) {
+        Some("inp") => save_fields_to_abaqus(
+            &config.output,
+            &random_fields
+                .iter()
+                .map(|rf| rf)
+                .collect::<Vec<&RandomField>>(),
+        )?,
+        Some("k") => save_fields_to_lsdyna(
+            &config.output,
+            &random_fields
+                .iter()
+                .map(|rf| rf)
+                .collect::<Vec<&RandomField>>(),
+        )?,
+        Some(other) => println!("File type with extension {other} not supported"),
+        None => println!("There is no extension in output file"),
+    }
+    if config.save_vtk {
+        let names: Vec<String> = random_fields.iter().map(|f| f.name.clone()).collect();
+        let nodal_fields: Vec<NodeScalarField> = names
+            .iter()
+            .zip(random_fields.iter())
+            .map(|(name, f)| (name.as_str(), &f.data))
+            .collect();
+        let vtk_path = file_path.with_extension("vtk");
+        m.save_vtk(vtk_path.to_str().unwrap(), Some(&nodal_fields), None)?;
+    }
     Ok(())
 }

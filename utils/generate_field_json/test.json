@@ -1,0 +1,14 @@
+{
+  "mesh_file": "mesh.k",
+  "output": "fields.k",
+  "save_vtk": true,
+  "fields": [
+    {
+      "field_type": { "Isotropic": 0.5 },
+      "properties": [
+        { "id": 1, "name": "s0", "mean": 200.0, "std": 10.0, "invert": false },
+        { "id": 2, "name": "ef", "mean": 1.1, "std": 0.1, "invert": true }
+      ]
+    }
+  ]
+}

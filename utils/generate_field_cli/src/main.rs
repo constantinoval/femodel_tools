@@ -1,11 +1,9 @@
 use femodel::objects::femodel::NodeScalarField;
 use femodel::prelude::*;
 use femodel::utils::generations::{
-    FieldProperties, FieldType, GeneratedField, fields_save_to_abaqus,
-    norm_distribution_to_mean_std, save_fields_to_lsdyna,
+    FieldType, Perturbation, RandomField, save_fields_to_abaqus, save_fields_to_lsdyna,
 };
 use inquire::{Confirm, Select, Text, validator::Validation};
-use std::ffi::OsStr;
 use std::fs;
 
 fn find_files(exts: &[&str]) -> Vec<String> {
@@ -83,6 +81,7 @@ fn ask_positive_int(message: &str, dflt: u16) -> u16 {
 
 fn main() -> anyhow::Result<()> {
     let files = find_files(&["inp", "k"]);
+    let mut field_num: u16 = 1;
     if files.is_empty() {
         anyhow::bail!(
             "В текущей директории не найдено файлов с сеточной моделью Abaqus (inp) или ls-dyna (k)"
@@ -101,52 +100,58 @@ fn main() -> anyhow::Result<()> {
         bb.min_x, bb.max_x, bb.min_y, bb.max_y, bb.min_z, bb.max_z
     );
 
-    let mut fields: Vec<FieldProperties> = Vec::new();
+    let mut fields: Vec<RandomField> = Vec::new();
 
-    loop {
-        let mut fp = FieldProperties::new();
-        fp.mean = ask_nonnegative_float("Среднее значение генерируемого поля:", 0.0);
-        fp.std = ask_positive_float("Стандартное отклонение генерируемого поля:", 1.0);
-        fp.inverse = Confirm::new("Инвертировать поле?")
-            .with_default(false)
-            .prompt()
-            .expect("Ошибка ввода");
-        fp.id = ask_positive_int("Номер поля для записи в файл:", 1);
-        fp.name = Text::new("Имя или комментарий к полю:")
-            .with_help_message("Например: напряжение течения | ef")
-            .with_default("")
-            .prompt()
-            .expect("Ошибка ввода");
+    let num_perturbations = ask_positive_int("Число распределений? ", 1);
+    for n in 0..num_perturbations {
+        println!("Наполнение распределения {}...", n + 1);
         let field_type = Select::new("Тип неоднородности:", vec!["изотропная", "ортотропная"])
             .prompt()
             .expect("Ошибка выбора");
-        match field_type {
+        let field_type: FieldType = match field_type {
             "изотропная" => {
                 let lc = ask_positive_float("Масштаб корреляции Lc:", 1.0);
-                fp.field_type = FieldType::Isotropic(lc);
+                Some(FieldType::Isotropic(lc))
             }
             "ортотропная" => {
                 let lx = ask_positive_float("Масштаб корреляции по оси 0X Lx:", 1.0);
                 let ly = ask_positive_float("Масштаб корреляции по оси 0Y Ly:", 1.0);
                 let lz = ask_positive_float("Масштаб корреляции по оси 0Z Lz:", 1.0);
-                fp.field_type = FieldType::Orthotropic(lx, ly, lz);
+                Some(FieldType::Orthotropic(lx, ly, lz))
             }
-            _ => {}
+            _ => None,
         }
-        fields.push(fp);
-        if !Confirm::new("Добавить еще поля?")
-            .with_default(false)
-            .prompt()
-            .expect("Ошибка ввода")
-        {
-            break;
+        .unwrap();
+        let pert = Perturbation::new(&m, field_type);
+        println!("Добавляем поля к распределению {}...", n + 1);
+        loop {
+            let id = ask_positive_int("Номер поля для записи в файл:", field_num);
+            field_num = id + 1;
+            let name = Text::new("Имя или комментарий к полю:")
+                .with_help_message("Например: напряжение течения | ef")
+                .with_default("")
+                .prompt()
+                .expect("Ошибка ввода");
+            let mean = ask_nonnegative_float("Среднее значение генерируемого поля:", 0.0);
+            let std = ask_positive_float("Стандартное отклонение генерируемого поля:", 1.0);
+            let inverse = Confirm::new("Инвертировать поле?")
+                .with_default(false)
+                .prompt()
+                .expect("Ошибка ввода");
+            let field = RandomField::new()
+                .with_id(id as usize)
+                .with_name(name)
+                .generate(&pert, mean, std, inverse);
+            fields.push(field);
+            if !Confirm::new("Добавить еще поля?")
+                .with_default(false)
+                .prompt()
+                .expect("Ошибка ввода")
+            {
+                break;
+            }
         }
     }
-    let coupled_fields =
-        Confirm::new("Генерировать поля с одинаковым распределением в пространстве?")
-            .with_default(true)
-            .prompt()
-            .expect("Ошибка ввода");
     let path = std::path::Path::new(&file);
     let name = path
         .file_stem()
@@ -162,58 +167,32 @@ fn main() -> anyhow::Result<()> {
         .with_default(format!("{}_{}.{}", name, "fields", ext).as_str())
         .prompt()
         .expect("Ошибка ввода");
-    let generated_fields = if coupled_fields {
-        let mut generated_fields: Vec<GeneratedField> = Vec::new();
-        let std_normal_field = match fields[0].field_type {
-            FieldType::Isotropic(lc) => m.generate_nodal_correlated_random_field(lc / 2.0),
-            FieldType::Orthotropic(lx, ly, lz) => {
-                m.generate_nodal_correlated_random_field_ortho(lx / 2.0, ly / 2.0, lz / 2.0)
-            }
-        };
-        for f in fields {
-            let std = if f.inverse { -f.std } else { f.std };
-            let data = norm_distribution_to_mean_std(&std_normal_field, &f.mean, &std);
-            generated_fields.push(GeneratedField {
-                field_property: f,
-                field: data,
-            });
-        }
-        generated_fields
-    } else {
-        let mut generated_fields: Vec<GeneratedField> = Vec::new();
-        for f in fields {
-            println!("Генерация случайного поля {}", f.id);
-            let std_normal_field = match f.field_type {
-                FieldType::Isotropic(lc) => m.generate_nodal_correlated_random_field(lc / 2.0),
-                FieldType::Orthotropic(lx, ly, lz) => {
-                    m.generate_nodal_correlated_random_field_ortho(lx / 2.0, ly / 2.0, lz / 2.0)
-                }
-            };
-            let data = norm_distribution_to_mean_std(&std_normal_field, &f.mean, &f.std);
-            generated_fields.push(GeneratedField {
-                field_property: f,
-                field: data,
-            });
-        }
-        generated_fields
-    };
     let file_path = std::path::Path::new(&file_name);
     match file_path.extension().and_then(|e| e.to_str()) {
-        Some("inp") => fields_save_to_abaqus(&file_name, &generated_fields, true)?,
-        Some("k") => save_fields_to_lsdyna(&file_name, &generated_fields, true)?,
+        Some("inp") => save_fields_to_abaqus(
+            &file_name,
+            &fields.iter().map(|rf| rf).collect::<Vec<&RandomField>>(),
+        )?,
+        Some("k") => save_fields_to_lsdyna(
+            &file_name,
+            &fields.iter().map(|rf| rf).collect::<Vec<&RandomField>>(),
+        )?,
         Some(other) => println!("File type with extension {other} not supported"),
         None => println!("There is no extension in output file"),
     }
-    let names: Vec<String> = generated_fields
-        .iter()
-        .map(|f| format!("F{}", f.field_property.id))
-        .collect();
-    let nodal_fields: Vec<NodeScalarField> = names
-        .iter()
-        .zip(generated_fields.iter())
-        .map(|(name, f)| (name.as_str(), &f.field))
-        .collect();
-    let vtk_path = file_path.with_extension("vtk");
-    m.save_vtk(vtk_path.to_str().unwrap(), Some(&nodal_fields), None)?;
+    if Confirm::new("Записать vtk? ")
+        .with_default(false)
+        .prompt()
+        .expect("Ошибка ввода")
+    {
+        let names: Vec<String> = fields.iter().map(|f| f.name.clone()).collect();
+        let nodal_fields: Vec<NodeScalarField> = names
+            .iter()
+            .zip(fields.iter())
+            .map(|(name, f)| (name.as_str(), &f.data))
+            .collect();
+        let vtk_path = file_path.with_extension("vtk");
+        m.save_vtk(vtk_path.to_str().unwrap(), Some(&nodal_fields), None)?;
+    }
     Ok(())
 }

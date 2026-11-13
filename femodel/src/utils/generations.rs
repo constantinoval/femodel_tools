@@ -1,4 +1,4 @@
-use crate::objects::femodel::{FEModel, NodeScalarField};
+use crate::objects::femodel::FEModel;
 use crate::utils::mean_and_std;
 use anyhow::Context;
 use fast_math;
@@ -28,23 +28,23 @@ pub struct FieldProperties {
     pub inverse: bool,
 }
 
-impl FieldProperties {
-    pub fn new() -> Self {
-        Self {
-            mean: 0.0,
-            std: 1.0,
-            id: 1,
-            name: "".to_string(),
-            field_type: FieldType::Isotropic(1.0),
-            inverse: false,
-        }
-    }
-}
+// impl FieldProperties {
+//     pub fn new() -> Self {
+//         Self {
+//             mean: 0.0,
+//             std: 1.0,
+//             id: 1,
+//             name: "".to_string(),
+//             field_type: FieldType::Isotropic(1.0),
+//             inverse: false,
+//         }
+//     }
+// }
 
-pub struct GeneratedField {
-    pub field_property: FieldProperties,
-    pub field: HashMap<usize, f32>,
-}
+// pub struct GeneratedField {
+//     pub field_property: FieldProperties,
+//     pub field: HashMap<usize, f32>,
+// }
 
 impl From<&FieldType> for String {
     fn from(value: &FieldType) -> Self {
@@ -57,22 +57,22 @@ impl From<&FieldType> for String {
     }
 }
 
-impl From<&FieldProperties> for String {
-    fn from(value: &FieldProperties) -> Self {
-        let mut result = "".to_string();
-        result.push_str(
-            &format!(
-                "Field number {}, mean={}, std={}, correlation length: {}",
-                &value.id,
-                &value.mean,
-                &value.std,
-                String::from(&value.field_type)
-            )
-            .to_string(),
-        );
-        result
-    }
-}
+// impl From<&FieldProperties> for String {
+//     fn from(value: &FieldProperties) -> Self {
+//         let mut result = "".to_string();
+//         result.push_str(
+//             &format!(
+//                 "Field number {}, mean={}, std={}, correlation length: {}",
+//                 &value.id,
+//                 &value.mean,
+//                 &value.std,
+//                 String::from(&value.field_type)
+//             )
+//             .to_string(),
+//         );
+//         result
+//     }
+// }
 
 impl FEModel {
     /// Генерирует изотропное коррелированное узловое случайное поле с длиной корреляции 2*l
