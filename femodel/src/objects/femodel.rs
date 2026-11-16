@@ -73,7 +73,7 @@ impl FEModel {
     }
 
     pub fn read(&mut self, path: &str) -> Result<(), String> {
-        let path = PathBuf::from_str(path).map_err(|e| e.to_string())?;
+        let path = PathBuf::from(path);
         if !path.exists() {
             return Err("File not found".to_string());
         }

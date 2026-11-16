@@ -1,0 +1,17 @@
+[package]
+name = "generate_field_gui"
+version = "0.1.0"
+edition = "2024"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+rfd = {version = "0.18.0"}
+slint = "1.18.1"
+
+[build-dependencies]
+slint-build = "1.18.1"
+
+[profile.release]
+codegen-units = 1
+lto = true

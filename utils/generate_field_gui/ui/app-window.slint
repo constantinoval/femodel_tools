@@ -1,0 +1,32 @@
+import { Button, VerticalBox, GroupBox, HorizontalBox } from "std-widgets.slint";
+
+export component AppWindow inherits Window {
+    in-out property <string> file_path: "выберите k или inp файл";
+    in property <string> model_size: "";
+    preferred-width: 600px;
+    preferred-height: 500px;
+    callback choose_file() -> string;
+    VerticalBox {
+        // open file group
+        GroupBox {
+            title: "Открыть файл с сеточной моделью";
+            height: 100px;
+            HorizontalBox {
+                Text{
+                    text: file_path;
+                    vertical-alignment: center;
+                }
+                Button {
+                    width: 60px;
+                    text: "Open";
+                    clicked => {
+                        file_path = choose_file();
+                    }
+                }
+            }
+        } // open file group
+        Text {
+            text: model_size;
+        }
+    }
+}
