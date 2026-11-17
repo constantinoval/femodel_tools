@@ -3,13 +3,15 @@ import { Button, VerticalBox, GroupBox, HorizontalBox, GridBox, StandardListView
 export component AppWindow inherits Window {
     in-out property <string> file_path: "выберите k или inp файл";
     in property <string> model_info: "";
-    in-out property <[StandardListViewItem]> perturbations: [{text: "p1"}, {text: "p2"}];
-    property <int> current_perturbation_index: -1;
-    in-out property <[[StandardListViewItem]]> fields: [[{text: "f1"}, {text: "f2"}], [{text: "ff1"}, {text: "ff2"}]];
-    property <int> current_field_index: -1;
+    in-out property <[StandardListViewItem]> perturbations;
+    in-out property <[StandardListViewItem]> random_fields;
+    in-out property <int> current_perturbation_index: -1;
     preferred-width: 600px;
     preferred-height: 500px;
     callback choose_file();
+    callback add_perturbation(int, [float]);
+    callback change_current_perturbation(int);
+
     VerticalBox {
         // open file group
         GroupBox {
@@ -45,6 +47,9 @@ export component AppWindow inherits Window {
                     Button {
                         text: "+";
                         width: 30px;
+                        clicked => {
+                            add_perturbation(0, [1.0, 2.0, 3.0]);
+                        };
                     }
                     Button {
                         text:"-";
@@ -67,11 +72,14 @@ export component AppWindow inherits Window {
             Row {
                 StandardListView {
                     model: perturbations;
+                    current-item: current_perturbation_index;
                     changed current-item => {
-                        flds.model = fields[self.current-item];
+                        change_current_perturbation(self.current-item);
                     }
                 }
-                flds:=StandardListView {}
+                flds:=StandardListView {
+                    model: random_fields;
+                }
             }
         }
     }
