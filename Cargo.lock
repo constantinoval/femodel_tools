@@ -1557,6 +1557,7 @@ dependencies = [
 name = "generate_field_gui"
 version = "0.1.0"
 dependencies = [
+ "femodel",
  "rfd",
  "slint",
  "slint-build",

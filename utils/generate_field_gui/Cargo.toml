@@ -8,6 +8,7 @@ edition = "2024"
 [dependencies]
 rfd = {version = "0.18.0"}
 slint = "1.18.1"
+femodel = {path = "../../femodel"}
 
 [build-dependencies]
 slint-build = "1.18.1"

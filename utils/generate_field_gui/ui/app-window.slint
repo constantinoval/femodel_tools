@@ -1,16 +1,21 @@
-import { Button, VerticalBox, GroupBox, HorizontalBox } from "std-widgets.slint";
+import { Button, VerticalBox, GroupBox, HorizontalBox, GridBox, StandardListView } from "std-widgets.slint";
 
 export component AppWindow inherits Window {
     in-out property <string> file_path: "выберите k или inp файл";
-    in property <string> model_size: "";
+    in property <string> model_info: "";
+    in-out property <[StandardListViewItem]> perturbations: [{text: "p1"}, {text: "p2"}];
+    property <int> current_perturbation_index: -1;
+    in-out property <[[StandardListViewItem]]> fields: [[{text: "f1"}, {text: "f2"}], [{text: "ff1"}, {text: "ff2"}]];
+    property <int> current_field_index: -1;
     preferred-width: 600px;
     preferred-height: 500px;
-    callback choose_file() -> string;
+    callback choose_file();
     VerticalBox {
         // open file group
         GroupBox {
             title: "Открыть файл с сеточной моделью";
             height: 100px;
+            vertical-stretch: 0.0;
             HorizontalBox {
                 Text{
                     text: file_path;
@@ -20,13 +25,54 @@ export component AppWindow inherits Window {
                     width: 60px;
                     text: "Open";
                     clicked => {
-                        file_path = choose_file();
+                        choose_file();
                     }
                 }
             }
         } // open file group
         Text {
-            text: model_size;
+            vertical-stretch: 0.0;
+            text: model_info;
+        }
+        GridBox {
+            horizontal-stretch: 1.0;
+            vertical-stretch: 1.0;
+            Row {
+                Text {text: "Распределения";}
+                Text {text: "Поля";}
+            }
+            Row {HorizontalBox {
+                    Button {
+                        text: "+";
+                        width: 30px;
+                    }
+                    Button {
+                        text:"-";
+                        width: 30px;
+                    }
+                    Text {}
+                    }
+                HorizontalBox {
+                        Button {
+                            text: "+";
+                            width: 30px;
+                        }
+                        Button {
+                            text:"-";
+                            width: 30px;
+                        }
+                        Text {}
+                        }
+            }
+            Row {
+                StandardListView {
+                    model: perturbations;
+                    changed current-item => {
+                        flds.model = fields[self.current-item];
+                    }
+                }
+                flds:=StandardListView {}
+            }
         }
     }
 }
