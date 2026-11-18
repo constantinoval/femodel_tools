@@ -47,11 +47,11 @@ fn main() -> Result<(), Box<dyn Error>> {
     ui.set_random_fields(ModelRc::from(fields_model.clone()));
 
     // выбор и чтение файла с сеточной моделью
-    let value = app_state.clone();
+    let app = app_state.clone();
     let ui_handle1 = ui_handle.clone();
     ui.on_choose_file(move || {
         let ui_handle = ui_handle1.clone();
-        let app_state = value.clone();
+        let app_state = app.clone();
         // let mut m = &app_state.model;
         slint::spawn_local(async move {
             let pick = AsyncFileDialog::new()
@@ -84,11 +84,13 @@ fn main() -> Result<(), Box<dyn Error>> {
         .unwrap();
     });
 
-    let value = app_state.clone();
+    let app = app_state.clone();
+    let pm = perturbation_model.clone();
     ui.on_add_perturbation(move |field_type: i32, params: ModelRc<f32>| {
-        let app_state = value.clone();
+        let app_state = app.clone();
         let params: Vec<f32> = params.iter().collect();
         let ui = ui_handle.unwrap();
+        // let perturbation_model = pm.clone();
         match field_type {
             0 => {
                 let lc = params.first().unwrap_or(&1.0);
@@ -97,7 +99,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                     fields: Vec::new(),
                 };
                 app_state.borrow_mut().perturbations.push(p);
-                perturbation_model.push(StandardListViewItem::from(
+                pm.push(StandardListViewItem::from(
                     String::from(&FieldType::Isotropic(*lc)).as_str(),
                 ));
             }
@@ -107,7 +109,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                     fields: Vec::new(),
                 };
                 app_state.borrow_mut().perturbations.push(p);
-                perturbation_model.push(StandardListViewItem::from(
+                pm.push(StandardListViewItem::from(
                     String::from(&FieldType::Orthotropic(params[0], params[1], params[2])).as_str(),
                 ));
             }
@@ -115,6 +117,18 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
         let idx = (app_state.borrow().perturbations.len() - 1) as i32;
         ui.set_current_perturbation_index(idx);
+    });
+
+    let app = app_state.clone();
+    let pm = perturbation_model.clone();
+    ui.on_delete_current_perturbation(move |idx: i32| {
+        if idx == -1 {
+            return;
+        }
+        let app_state = app.clone();
+        // let perturbation_model = pm;
+        app_state.borrow_mut().perturbations.remove(idx as usize);
+        pm.remove(idx as usize);
     });
 
     ui.run()?;

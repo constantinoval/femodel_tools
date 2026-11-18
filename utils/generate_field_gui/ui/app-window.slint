@@ -1,4 +1,74 @@
-import { Button, VerticalBox, GroupBox, HorizontalBox, GridBox, StandardListView } from "std-widgets.slint";
+import { Button, VerticalBox, GroupBox, HorizontalBox, GridBox, StandardListView, ComboBox, LineEdit, Palette, StandardButton } from "std-widgets.slint";
+
+export component PerturbationProperties inherits Rectangle {
+    in-out property <int> perturbation_type: 0;
+    in-out property <[float]> parameters: [1.0, 1.0, 1.0];
+    out property <bool> accepted;
+    background: Palette.alternate-background;
+    VerticalLayout {
+    cb:=ComboBox {
+        model: ["Изотропное", "Ортотропное"];
+        current-index: perturbation_type;
+        changed current-index => {
+            perturbation_type = self.current-index;
+        }
+    }
+    if cb.current-index==0:
+    VerticalBox {
+        Text {
+            text: "Lc";
+        }
+        LineEdit {
+            input-type: InputType.decimal;
+            text: parameters[0];
+            edited(text) => {
+                parameters = [text.to-float(), parameters[1], parameters[2]];
+            }
+        }
+    }
+
+    if cb.current-index==1:
+    VerticalBox {
+            GridBox {
+            Row {
+                Text {
+                    text: "Lx";
+                }
+                Text {
+                    text: "Ly";
+                }
+                Text {
+                    text: "Lz";
+                }
+            } // Row
+            Row {
+                LineEdit {
+                    input-type: InputType.decimal;
+                    text: parameters[0];
+                    edited(text) => {
+                        parameters = [text.to-float(), parameters[1], parameters[2]];
+                    }
+                }
+                LineEdit {
+                    input-type: InputType.decimal;
+                    text: parameters[1];
+                    edited(text) => {
+                        parameters = [parameters[0], text.to-float(), parameters[2]];
+                    }
+                }
+                LineEdit {
+                    input-type: InputType.decimal;
+                    text: parameters[2];
+                    edited(text) => {
+                        parameters = [parameters[0], parameters[1], text.to-float()];
+                    }
+                }
+            } // Row
+        }
+    }
+}
+}
+
 
 export component AppWindow inherits Window {
     in-out property <string> file_path: "выберите k или inp файл";
@@ -11,8 +81,35 @@ export component AppWindow inherits Window {
     callback choose_file();
     callback add_perturbation(int, [float]);
     callback change_current_perturbation(int);
+    callback delete_current_perturbation(int);
 
     VerticalBox {
+        pp:= PopupWindow {
+            close-policy: close-on-click-outside;
+            x: 20px;
+            y: 20px;
+            Rectangle {
+            background: Palette.alternate-background;
+            VerticalLayout {
+            pert_props:=PerturbationProperties {}
+            HorizontalBox {
+                StandardButton {
+                    kind: ok;
+                    clicked => {
+                        add_perturbation(pert_props.perturbation_type, pert_props.parameters);
+                        pp.close();
+                    }
+                }
+                StandardButton {
+                    kind: cancel;
+                    clicked => {
+                        pp.close();
+                    }
+                }
+            }
+            }
+            }
+        }
         // open file group
         GroupBox {
             title: "Открыть файл с сеточной моделью";
@@ -43,42 +140,55 @@ export component AppWindow inherits Window {
                 Text {text: "Распределения";}
                 Text {text: "Поля";}
             }
-            Row {HorizontalBox {
+            Row {
+                HorizontalBox {
+                    alignment: start;
                     Button {
                         text: "+";
                         width: 30px;
                         clicked => {
-                            add_perturbation(0, [1.0, 2.0, 3.0]);
+                            pp.show();
                         };
                     }
                     Button {
                         text:"-";
                         width: 30px;
-                    }
-                    Text {}
-                    }
-                HorizontalBox {
-                        Button {
-                            text: "+";
-                            width: 30px;
+                        clicked => {
+                            delete_current_perturbation(current_perturbation_index);
                         }
-                        Button {
-                            text:"-";
-                            width: 30px;
-                        }
-                        Text {}
-                        }
-            }
-            Row {
-                StandardListView {
-                    model: perturbations;
-                    current-item: current_perturbation_index;
-                    changed current-item => {
-                        change_current_perturbation(self.current-item);
                     }
                 }
-                flds:=StandardListView {
+                HorizontalBox {
+                    alignment: start;
+                    Button {
+                        text: "+";
+                        width: 30px;
+                    }
+                    Button {
+                        text:"-";
+                        width: 30px;
+                    }
+                }
+            }
+            Row {
+                Rectangle {
+                    border-width: 1px;
+                    border-color: Palette.alternate-background;
+                    StandardListView {
+                        model: perturbations;
+                        current-item: current_perturbation_index;
+                        changed current-item => {
+                            current_perturbation_index = self.current-item;
+                            change_current_perturbation(self.current-item);
+                        }
+                    }
+                }
+                Rectangle {
+                    border-width: 1px;
+                    border-color: Palette.alternate-background;
+                    StandardListView {
                     model: random_fields;
+                    }
                 }
             }
         }
