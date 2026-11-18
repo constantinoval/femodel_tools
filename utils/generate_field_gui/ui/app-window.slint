@@ -5,7 +5,11 @@ export component PerturbationProperties inherits Rectangle {
     in-out property <[float]> parameters: [1.0, 1.0, 1.0];
     out property <bool> accepted;
     background: Palette.alternate-background;
-    VerticalLayout {
+    VerticalBox {
+    Text {
+        text: "Параметры распределения";
+        font-size: 16px;
+    }
     cb:=ComboBox {
         model: ["Изотропное", "Ортотропное"];
         current-index: perturbation_type;
@@ -76,59 +80,66 @@ export component AppWindow inherits Window {
     in-out property <[StandardListViewItem]> perturbations;
     in-out property <[StandardListViewItem]> random_fields;
     in-out property <int> current_perturbation_index: -1;
-    preferred-width: 600px;
-    preferred-height: 500px;
+    preferred-width: 800px;
+    preferred-height: 800px;
     callback choose_file();
     callback add_perturbation(int, [float]);
     callback change_current_perturbation(int);
     callback delete_current_perturbation(int);
 
     VerticalBox {
+        // alignment: start;
         pp:= PopupWindow {
             close-policy: close-on-click-outside;
             x: 20px;
             y: 20px;
             Rectangle {
-            background: Palette.alternate-background;
-            VerticalLayout {
-            pert_props:=PerturbationProperties {}
-            HorizontalBox {
-                StandardButton {
-                    kind: ok;
-                    clicked => {
-                        add_perturbation(pert_props.perturbation_type, pert_props.parameters);
-                        pp.close();
+                background: Palette.alternate-background;
+                VerticalLayout {
+                pert_props:=PerturbationProperties {}
+                HorizontalBox {
+                    StandardButton {
+                        kind: ok;
+                        clicked => {
+                            add_perturbation(pert_props.perturbation_type, pert_props.parameters);
+                            pp.close();
+                        }
+                    }
+                    StandardButton {
+                        kind: cancel;
+                        clicked => {
+                            pp.close();
+                        }
                     }
                 }
-                StandardButton {
-                    kind: cancel;
-                    clicked => {
-                        pp.close();
-                    }
                 }
-            }
-            }
             }
         }
         // open file group
-        GroupBox {
-            title: "Открыть файл с сеточной моделью";
-            height: 100px;
-            vertical-stretch: 0.0;
-            HorizontalBox {
-                Text{
-                    text: file_path;
-                    vertical-alignment: center;
-                }
-                Button {
-                    width: 60px;
-                    text: "Open";
-                    clicked => {
-                        choose_file();
+        Rectangle {
+            border-width: 3px;
+            border-color: Palette.alternate-background;
+        VerticalBox {
+            GroupBox {
+                title: "Открыть файл с сеточной моделью";
+                height: 100px;
+                vertical-stretch: 0.0;
+                HorizontalBox {
+                    Text{
+                        text: file_path;
+                        vertical-alignment: center;
+                    }
+                    Button {
+                        width: 60px;
+                        text: "Open";
+                        clicked => {
+                            choose_file();
+                        }
                     }
                 }
-            }
-        } // open file group
+            } // open file group
+        }
+        }
         Text {
             vertical-stretch: 0.0;
             text: model_info;
@@ -172,7 +183,7 @@ export component AppWindow inherits Window {
             }
             Row {
                 Rectangle {
-                    border-width: 1px;
+                    border-width: 2px;
                     border-color: Palette.alternate-background;
                     StandardListView {
                         model: perturbations;
@@ -184,7 +195,7 @@ export component AppWindow inherits Window {
                     }
                 }
                 Rectangle {
-                    border-width: 1px;
+                    border-width: 2px;
                     border-color: Palette.alternate-background;
                     StandardListView {
                     model: random_fields;
