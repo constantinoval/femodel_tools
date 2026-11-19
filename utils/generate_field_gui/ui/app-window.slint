@@ -1,78 +1,78 @@
 import { Button, VerticalBox, GroupBox, HorizontalBox, GridBox, StandardListView, ComboBox, LineEdit, Palette, StandardButton } from "std-widgets.slint";
+import { PerturbationDialog } from "perturbation-dialog.slint";
 
-export component PerturbationProperties inherits Rectangle {
-    in-out property <int> perturbation_type: 0;
-    in-out property <[float]> parameters: [1.0, 1.0, 1.0];
-    out property <bool> accepted;
-    background: Palette.alternate-background;
-    VerticalBox {
-    Text {
-        text: "Параметры распределения";
-        font-size: 16px;
-    }
-    cb:=ComboBox {
-        model: ["Изотропное", "Ортотропное"];
-        current-index: perturbation_type;
-        changed current-index => {
-            perturbation_type = self.current-index;
-        }
-    }
-    if cb.current-index==0:
-    VerticalBox {
-        Text {
-            text: "Lc";
-        }
-        LineEdit {
-            input-type: InputType.decimal;
-            text: parameters[0];
-            edited(text) => {
-                parameters = [text.to-float(), parameters[1], parameters[2]];
-            }
-        }
-    }
-
-    if cb.current-index==1:
-    VerticalBox {
-            GridBox {
-            Row {
-                Text {
-                    text: "Lx";
-                }
-                Text {
-                    text: "Ly";
-                }
-                Text {
-                    text: "Lz";
-                }
-            } // Row
-            Row {
-                LineEdit {
-                    input-type: InputType.decimal;
-                    text: parameters[0];
-                    edited(text) => {
-                        parameters = [text.to-float(), parameters[1], parameters[2]];
-                    }
-                }
-                LineEdit {
-                    input-type: InputType.decimal;
-                    text: parameters[1];
-                    edited(text) => {
-                        parameters = [parameters[0], text.to-float(), parameters[2]];
-                    }
-                }
-                LineEdit {
-                    input-type: InputType.decimal;
-                    text: parameters[2];
-                    edited(text) => {
-                        parameters = [parameters[0], parameters[1], text.to-float()];
-                    }
-                }
-            } // Row
-        }
-    }
-}
-}
-
+// export component PerturbationProperties inherits Rectangle {
+//     in-out property <int> perturbation_type: 0;
+//     in-out property <[float]> parameters: [1.0, 1.0, 1.0];
+//     out property <bool> accepted;
+//     background: Palette.alternate-background;
+//     VerticalBox {
+//     Text {
+//         text: "Параметры распределения";
+//         font-size: 16px;
+//     }
+//     cb:=ComboBox {
+//         model: ["Изотропное", "Ортотропное"];
+//         current-index: perturbation_type;
+//         changed current-index => {
+//             perturbation_type = self.current-index;
+//         }
+//     }
+//     if cb.current-index==0:
+//     VerticalBox {
+//         Text {
+//             text: "Lc";
+//         }
+//         LineEdit {
+//             input-type: InputType.decimal;
+//             text: parameters[0];
+//             edited(text) => {
+//                 parameters = [text.to-float(), parameters[1], parameters[2]];
+//             }
+//         }
+//     }
+//
+//     if cb.current-index==1:
+//     VerticalBox {
+//             GridBox {
+//             Row {
+//                 Text {
+//                     text: "Lx";
+//                 }
+//                 Text {
+//                     text: "Ly";
+//                 }
+//                 Text {
+//                     text: "Lz";
+//                 }
+//             } // Row
+//             Row {
+//                 LineEdit {
+//                     input-type: InputType.decimal;
+//                     text: parameters[0];
+//                     edited(text) => {
+//                         parameters = [text.to-float(), parameters[1], parameters[2]];
+//                     }
+//                 }
+//                 LineEdit {
+//                     input-type: InputType.decimal;
+//                     text: parameters[1];
+//                     edited(text) => {
+//                         parameters = [parameters[0], text.to-float(), parameters[2]];
+//                     }
+//                 }
+//                 LineEdit {
+//                     input-type: InputType.decimal;
+//                     text: parameters[2];
+//                     edited(text) => {
+//                         parameters = [parameters[0], parameters[1], text.to-float()];
+//                     }
+//                 }
+//             } // Row
+//         }
+//     }
+// }
+// }
 
 export component AppWindow inherits Window {
     in-out property <string> file_path: "выберите k или inp файл";
@@ -80,41 +80,53 @@ export component AppWindow inherits Window {
     in-out property <[StandardListViewItem]> perturbations;
     in-out property <[StandardListViewItem]> random_fields;
     in-out property <int> current_perturbation_index: -1;
+    out property <bool> perturbation_dialog_open: false;
+
     preferred-width: 800px;
     preferred-height: 800px;
     callback choose_file();
     callback add_perturbation(int, [float]);
     callback change_current_perturbation(int);
     callback delete_current_perturbation(int);
+    callback perturbation_accepted(int, [float]);
+
+    perturbation_dialog := PerturbationDialog {
+        accepted(kind, params) => {
+            root.perturbation_accepted(kind, params);
+            root.perturbation_dialog_open = false;
+        }
+        rejected() => { root.perturbation_dialog_open = false; }
+    }
+
 
     VerticalBox {
         // alignment: start;
-        pp:= PopupWindow {
-            close-policy: close-on-click-outside;
-            x: 20px;
-            y: 20px;
-            Rectangle {
-                background: Palette.alternate-background;
-                VerticalLayout {
-                pert_props:=PerturbationProperties {}
-                HorizontalBox {
-                    StandardButton {
-                        kind: ok;
-                        clicked => {
-                            add_perturbation(pert_props.perturbation_type, pert_props.parameters);
-                            pp.close();
-                        }
-                    }
-                    StandardButton {
-                        kind: cancel;
-                        clicked => {
-                            pp.close();
-                        }
-                    }
-                }
-                }
-            }
-        }
+        // pp:= PopupWindow {
+        //     close-policy: close-on-click-outside;
+        //     x: 20px;
+        //     y: 20px;
+        //     Rectangle {
+        //         background: Palette.alternate-background;
+        //         VerticalLayout {
+        //         pert_props:=PerturbationProperties {}
+        //         HorizontalBox {
+        //             StandardButton {
+        //                 kind: ok;
+        //                 clicked => {
+        //                     add_perturbation(pert_props.perturbation_type, pert_props.parameters);
+        //                     pp.close();
+        //                 }
+        //             }
+        //             StandardButton {
+        //                 kind: cancel;
+        //                 clicked => {
+        //                     pp.close();
+        //                 }
+        //             }
+        //         }
+        //         }
+        //     }
+        // }
         // open file group
         Rectangle {
             border-width: 3px;
@@ -158,7 +170,12 @@ export component AppWindow inherits Window {
                         text: "+";
                         width: 30px;
                         clicked => {
-                            pp.show();
+                            perturbation_dialog.perturbation_type = 0;
+                            perturbation_dialog.lc = 1.0;
+                            perturbation_dialog.lx = 1.0;
+                            perturbation_dialog.ly = 1.0;
+                            perturbation_dialog.lz = 1.0;
+                            perturbation_dialog.show();
                         };
                     }
                     Button {

@@ -1,0 +1,78 @@
+// ui/perturbation-dialog.slint
+import { Button, ComboBox, LineEdit, Palette, StandardButton, VerticalBox, HorizontalBox, GridBox } from "std-widgets.slint";
+
+export component PerturbationDialog inherits PopupWindow {
+    in-out property <int> perturbation_type: 0;
+    in-out property <float> lc: 1.0;
+    in-out property <float> lx: 1.0;
+    in-out property <float> ly: 1.0;
+    in-out property <float> lz: 1.0;
+
+    // результат: true + параметры
+    callback accepted(int, [float]);
+    callback rejected();
+
+    // валидация: все нужные значения > 0
+    property <bool> valid: perturbation_type == 0 ? lc > 0 : lx > 0 && ly > 0 && lz > 0;
+
+    close-policy: close-on-click-outside;
+    width: 420px;
+    // height: layout.min-height;
+
+    VerticalBox {
+        padding: 12px;
+        spacing: 8px;
+        Text { text: "Параметры распределения"; font-size: 16px; }
+
+        cb := ComboBox {
+            model: ["Изотропное", "Ортотропное"];
+            current-index <=> root.perturbation_type;
+        }
+
+        if root.perturbation_type == 0: HorizontalBox {
+            Text { text: "Lc"; vertical-alignment: center; }
+            LineEdit {
+                input-type: InputType.decimal;
+                text: root.lc;                 // двусторонняя привязка
+            }
+        }
+
+        if root.perturbation_type == 1: GridBox {
+            Row { Text { text: "Lx"; } Text { text: "Ly"; } Text { text: "Lz"; } }
+            Row {
+                LineEdit { input-type: InputType.decimal; text: root.lx; }
+                LineEdit { input-type: InputType.decimal; text: root.ly; }
+                LineEdit { input-type: InputType.decimal; text: root.lz; }
+            }
+        }
+
+        // сообщение о неверном вводе
+        if !root.valid: Text {
+            text: "Все масштабы корреляции должны быть > 0";
+            color: red;
+            wrap: word-wrap;
+        }
+
+        HorizontalBox {
+            alignment: end;
+            spacing: 6px;
+            StandardButton {
+                kind: cancel;
+                clicked => { root.close(); root.rejected(); }
+            }
+            StandardButton {
+                kind: ok;
+                enabled: root.valid;
+                clicked => {
+                    root.accepted(
+                        root.perturbation_type,
+                        root.perturbation_type == 0
+                            ? [root.lc]
+                            : [root.lx, root.ly, root.lz]
+                    );
+                    root.close();
+                }
+            }
+        }
+    }
+}

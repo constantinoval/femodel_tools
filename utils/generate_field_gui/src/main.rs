@@ -90,40 +90,69 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     // let app = app_state.clone();
     // let pm = perturbation_model.clone();
-    ui.on_add_perturbation({
+    // ui.on_add_perturbation({
+    //     let app_state = Rc::clone(&app_state);
+    //     let ui = ui_handle.unwrap();
+    //     let pm = Rc::clone(&perturbation_model);
+    //     move |field_type: i32, params: ModelRc<f32>| {
+    //         let params: Vec<f32> = params.iter().collect();
+    //         // let perturbation_model = pm.clone();
+    //         match field_type {
+    //             0 => {
+    //                 let lc = params.first().unwrap_or(&1.0);
+    //                 let p = PerturbationDraft {
+    //                     field_type: FieldType::Isotropic(*lc),
+    //                     fields: Vec::new(),
+    //                 };
+    //                 app_state.borrow_mut().perturbations.push(p);
+    //                 pm.push(StandardListViewItem::from(
+    //                     String::from(&FieldType::Isotropic(*lc)).as_str(),
+    //                 ));
+    //             }
+    //             1 => {
+    //                 let p = PerturbationDraft {
+    //                     field_type: FieldType::Orthotropic(params[0], params[1], params[2]),
+    //                     fields: Vec::new(),
+    //                 };
+    //                 app_state.borrow_mut().perturbations.push(p);
+    //                 pm.push(StandardListViewItem::from(
+    //                     String::from(&FieldType::Orthotropic(params[0], params[1], params[2]))
+    //                         .as_str(),
+    //                 ));
+    //             }
+    //             _ => {}
+    //         }
+    //         let idx = (app_state.borrow().perturbations.len() - 1) as i32;
+    //         ui.set_current_perturbation_index(idx);
+    //     }
+    // });
+
+    ui.on_perturbation_accepted({
         let app_state = Rc::clone(&app_state);
-        let ui = ui_handle.unwrap();
+        let ui_handle = ui.as_weak();
         let pm = Rc::clone(&perturbation_model);
-        move |field_type: i32, params: ModelRc<f32>| {
-            let params: Vec<f32> = params.iter().collect();
-            // let perturbation_model = pm.clone();
-            match field_type {
-                0 => {
-                    let lc = params.first().unwrap_or(&1.0);
-                    let p = PerturbationDraft {
-                        field_type: FieldType::Isotropic(*lc),
-                        fields: Vec::new(),
-                    };
-                    app_state.borrow_mut().perturbations.push(p);
-                    pm.push(StandardListViewItem::from(
-                        String::from(&FieldType::Isotropic(*lc)).as_str(),
-                    ));
-                }
-                1 => {
-                    let p = PerturbationDraft {
-                        field_type: FieldType::Orthotropic(params[0], params[1], params[2]),
-                        fields: Vec::new(),
-                    };
-                    app_state.borrow_mut().perturbations.push(p);
-                    pm.push(StandardListViewItem::from(
-                        String::from(&FieldType::Orthotropic(params[0], params[1], params[2]))
-                            .as_str(),
-                    ));
-                }
-                _ => {}
+        move |kind: i32, params: ModelRc<f32>| {
+            let v: Vec<f32> = params.iter().collect();
+            let field_type = match (kind, v.as_slice()) {
+                (0, [lc, ..]) => FieldType::Isotropic(*lc),
+                (1, [lx, ly, lz, ..]) => FieldType::Orthotropic(*lx, *ly, *lz),
+                _ => return, // Slint уже гарантировал длину, но не паникуем
+            };
+
+            let label = String::from(&field_type); // Display/From в femodel
+            app_state
+                .borrow_mut()
+                .perturbations
+                .push(PerturbationDraft {
+                    field_type,
+                    fields: Vec::new(),
+                });
+            pm.push(StandardListViewItem::from(label.as_str()));
+
+            let len = app_state.borrow().perturbations.len();
+            if let Some(ui) = ui_handle.upgrade() {
+                ui.set_current_perturbation_index(if len == 0 { -1 } else { (len - 1) as i32 });
             }
-            let idx = (app_state.borrow().perturbations.len() - 1) as i32;
-            ui.set_current_perturbation_index(idx);
         }
     });
 
