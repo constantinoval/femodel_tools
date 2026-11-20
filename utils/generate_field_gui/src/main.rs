@@ -9,7 +9,6 @@ use rfd::AsyncFileDialog;
 use slint::{Model, ModelRc, StandardListViewItem, VecModel};
 use std::cell::RefCell;
 use std::error::Error;
-use std::path::PathBuf;
 use std::rc::Rc;
 use std::sync::{Arc, RwLock};
 
@@ -31,6 +30,91 @@ struct PerturbationDraft {
 struct AppState {
     model: Arc<RwLock<FEModel>>, // None пока файл не открыт
     perturbations: Vec<PerturbationDraft>,
+}
+
+/// Всё, что нужно фоновому потоку. Только `Send`-данные — ни `Rc`, ни `AppState`.
+struct GenerationJob {
+    model: Arc<RwLock<FEModel>>,
+    drafts: Vec<PerturbationDraft>,
+    output: std::path::PathBuf,
+    save_vtk: bool,
+}
+
+impl AppState {
+    /// Клонирует данные для фонового потока. Вызывать только на UI-потоке.
+    fn snapshot_for_generation(&self, output: std::path::PathBuf, save_vtk: bool) -> GenerationJob {
+        GenerationJob {
+            model: Arc::clone(&self.model),
+            drafts: self.perturbations.clone(),
+            output,
+            save_vtk,
+        }
+    }
+
+    fn ready_to_generate(&self) -> bool {
+        let has_nodes = self
+            .model
+            .read()
+            .map(|m| !m.nodes.is_empty())
+            .unwrap_or(false);
+        has_nodes && self.perturbations.iter().any(|p| !p.fields.is_empty())
+    }
+}
+
+/// Генерирует и записывает файлы. Чистая работа, выполняется в фоновом потоке.
+/// Возвращает текст статуса для UI.
+fn run_generation(job: GenerationJob) -> String {
+    let model = job.model.read().unwrap();
+
+    let results: Vec<RandomField> = job
+        .drafts
+        .iter()
+        .flat_map(|p| {
+            let pert = Perturbation::new(&model, p.field_type);
+            p.fields.iter().map(move |f| {
+                RandomField::new()
+                    .with_id(f.id)
+                    .with_name(f.name.clone())
+                    .generate(&pert, f.mean, f.std, f.inverse)
+            })
+        })
+        .collect();
+
+    let refs: Vec<&RandomField> = results.iter().collect();
+    let path = job.output.to_string_lossy();
+    let ext = job
+        .output
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+
+    let mut status = match ext.as_str() {
+        "k" => save_fields_to_lsdyna(&path, &refs),
+        _ => save_fields_to_abaqus(&path, &refs),
+    }
+    .map(|()| format!("Сохранено: {}", job.output.display()))
+    .unwrap_or_else(|e| format!("Ошибка записи {}: {e}", job.output.display()));
+
+    if job.save_vtk {
+        let vtk_path = job.output.with_extension("vtk");
+        let names: Vec<String> = results.iter().map(|f| f.name.clone()).collect();
+        let nodal_fields: Vec<NodeScalarField> = names
+            .iter()
+            .zip(results.iter())
+            .map(|(name, f)| (name.as_str(), &f.data))
+            .collect();
+        match model.save_vtk(
+            vtk_path.to_string_lossy().as_ref(),
+            Some(&nodal_fields),
+            None,
+        ) {
+            Ok(()) => status += &format!("\nVTK: {}", vtk_path.display()),
+            Err(e) => status += &format!("\nОшибка VTK: {e}"),
+        }
+    }
+
+    status
 }
 
 slint::include_modules!();
@@ -217,103 +301,66 @@ fn main() -> Result<(), Box<dyn Error>> {
         let app_state = app_state.clone();
         let ui_handle = ui_handle.clone();
         let ui = ui_handle.unwrap();
-        move || {
-            let save_vtk = ui.get_is_save_vtk();
-            let st = app_state.borrow();
-            let m = st.model.read().unwrap();
-            if m.nodes.len() == 0 {
-                return;
-            }
-            if st.perturbations.len() == 0 {
-                return;
-            }
-            let app_state = app_state.clone();
-            let ui_handle = ui_handle.clone();
 
-            // Блокируем UI сразу — до диалога.
+        move || {
+            let snapshot = {
+                let st = app_state.borrow();
+                if !st.ready_to_generate() {
+                    return;
+                }
+                st
+            };
+
+            // Читаем UI-свойство и готовим снимок — оба синхронно, на UI-потоке.
+            let save_vtk = ui.get_is_save_vtk();
+            let model_and_drafts = (Arc::clone(&snapshot.model), snapshot.perturbations.clone());
+            drop(snapshot);
+
             ui_handle
                 .upgrade_in_event_loop(|ui| ui.set_generating(true))
                 .ok();
 
-            slint::spawn_local(async move {
-                let reset = {
-                    let ui_handle = ui_handle.clone();
-                    move || {
-                        ui_handle
-                            .upgrade_in_event_loop(|ui| ui.set_generating(false))
-                            .ok();
-                    }
-                };
+            let ui_handle = ui_handle.clone();
+            // log::info!("generation started");
+            // let app_state = app_state.clone();
 
-                let pick = AsyncFileDialog::new()
+            slint::spawn_local(async move {
+                let Some(file) = AsyncFileDialog::new()
                     .add_filter("ls-dyna", &["k"])
                     .add_filter("abaqus", &["inp"])
                     .set_file_name("fields")
                     .save_file()
-                    .await;
-                let Some(file) = pick else {
-                    reset();
+                    .await
+                else {
+                    ui_handle
+                        .upgrade_in_event_loop(|ui| ui.set_generating(false))
+                        .ok();
                     return;
                 };
-                let out_path = file.path().to_path_buf();
 
-                let (model_arc, jobs) = {
-                    let st = app_state.borrow();
-                    (Arc::clone(&st.model), st.perturbations.clone())
+                let job = {
+                    // let st = app_state.borrow();
+                    let (model, drafts) = &model_and_drafts;
+                    GenerationJob {
+                        model: Arc::clone(model),
+                        drafts: drafts.clone(),
+                        output: file.path().to_path_buf(),
+                        save_vtk,
+                    }
                 };
-                if jobs.iter().all(|p| p.fields.is_empty()) {
-                    eprintln!("Нет полей для генерации");
-                    reset();
-                    return;
-                }
 
                 let ui_handle = ui_handle.clone();
                 std::thread::spawn(move || {
-                    let model = model_arc.read().unwrap();
-                    let results: Vec<RandomField> = jobs
-                        .iter()
-                        .flat_map(|p| {
-                            let pert = Perturbation::new(&model, p.field_type);
-                            p.fields.iter().map(move |f| {
-                                RandomField::new()
-                                    .with_id(f.id)
-                                    .with_name(f.name.clone())
-                                    .generate(&pert, f.mean, f.std, f.inverse)
-                            })
+                    let status = run_generation(job);
+                    ui_handle
+                        .upgrade_in_event_loop(move |ui| {
+                            ui.set_model_info(status.into());
+                            ui.set_generating(false);
                         })
-                        .collect();
-
-                    let refs: Vec<&RandomField> = results.iter().collect();
-                    let ext = out_path
-                        .extension()
-                        .and_then(|e| e.to_str())
-                        .unwrap_or("")
-                        .to_ascii_lowercase();
-                    let _ = match ext.as_str() {
-                        "k" => save_fields_to_lsdyna(out_path.to_str().unwrap(), &refs),
-                        _ => save_fields_to_abaqus(out_path.to_str().unwrap(), &refs),
-                    };
-                    if save_vtk {
-                        let names: Vec<String> = results.iter().map(|f| f.name.clone()).collect();
-                        let nodal_fields: Vec<NodeScalarField> = names
-                            .iter()
-                            .zip(results.iter())
-                            .map(|(name, f)| (name.as_str(), &f.data))
-                            .collect();
-                        let vtk_path = out_path.with_extension("vtk");
-                        let _ = model.save_vtk(
-                            vtk_path.to_str().unwrap_or_default(),
-                            Some(&nodal_fields),
-                            None,
-                        );
-                    }
-                    drop(model);
-                    let _ = ui_handle.upgrade_in_event_loop(move |ui| {
-                        ui.set_generating(false);
-                    });
+                        .ok();
                 });
             })
-            .ok(); // не unwrap: без паники, если очередь недоступна
+            .ok();
         }
     });
 
