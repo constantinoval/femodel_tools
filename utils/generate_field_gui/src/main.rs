@@ -2,12 +2,18 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use femodel::prelude::*;
-use femodel::utils::generations::{FieldType, Perturbation};
+use femodel::utils::generations::{
+    FieldType, Perturbation, RandomField, save_fields_to_abaqus, save_fields_to_lsdyna,
+};
 use rfd::AsyncFileDialog;
 use slint::{Model, ModelRc, StandardListViewItem, VecModel};
+use std::cell::RefCell;
 use std::error::Error;
+use std::path::PathBuf;
 use std::rc::Rc;
+use std::sync::{Arc, RwLock};
 
+#[derive(Clone)]
 struct FieldDraft {
     id: usize,
     name: String,
@@ -16,13 +22,14 @@ struct FieldDraft {
     inverse: bool,
 }
 
+#[derive(Clone)]
 struct PerturbationDraft {
     field_type: FieldType,
     fields: Vec<FieldDraft>,
 }
 
 struct AppState {
-    model: FEModel, // None пока файл не открыт
+    model: Arc<RwLock<FEModel>>, // None пока файл не открыт
     perturbations: Vec<PerturbationDraft>,
 }
 
@@ -31,8 +38,8 @@ slint::include_modules!();
 fn main() -> Result<(), Box<dyn Error>> {
     let ui = AppWindow::new()?;
     let ui_handle = ui.as_weak();
-    let app_state = Rc::new(std::cell::RefCell::new(AppState {
-        model: FEModel::default(),
+    let app_state = Rc::new(RefCell::new(AppState {
+        model: Arc::new(RwLock::new(FEModel::default())),
         perturbations: Vec::new(),
     }));
 
@@ -65,12 +72,22 @@ fn main() -> Result<(), Box<dyn Error>> {
                 if let Some(path) = pick {
                     let path = String::from(path.path().to_string_lossy());
                     println!("Reading model...");
-                    app_state.borrow_mut().model.read(&path).unwrap(); // Сохраняем в UI
-                    println!("{}", app_state.borrow().model);
-                    let ncount = app_state.borrow().model.nodes.len();
-                    let solids = app_state.borrow().model.solids.len();
-                    let shells = app_state.borrow().model.shells.len();
-                    let bb = app_state.borrow().model.bbox();
+                    app_state
+                        .borrow_mut()
+                        .model
+                        .write()
+                        .unwrap()
+                        .read(&path)
+                        .unwrap(); // Сохраняем в UI
+                    let st = app_state.borrow();
+                    let m = st.model.read().unwrap();
+                    println!("{}", m);
+                    let ncount = m.nodes.len();
+                    let solids = m.solids.len();
+                    let shells = m.shells.len();
+                    let bb = m.bbox();
+                    drop(m);
+                    drop(st);
                     let mut s = format!(
                         "Узлов: {ncount}, объемных элементов: {solids}, оболочек: {shells}\n"
                     );
@@ -198,14 +215,105 @@ fn main() -> Result<(), Box<dyn Error>> {
 
     ui.on_generate({
         let app_state = app_state.clone();
+        let ui_handle = ui_handle.clone();
+        let ui = ui_handle.unwrap();
         move || {
+            let save_vtk = ui.get_is_save_vtk();
+            let st = app_state.borrow();
+            let m = st.model.read().unwrap();
+            if m.nodes.len() == 0 {
+                return;
+            }
+            if st.perturbations.len() == 0 {
+                return;
+            }
             let app_state = app_state.clone();
+            let ui_handle = ui_handle.clone();
+
+            // Блокируем UI сразу — до диалога.
+            ui_handle
+                .upgrade_in_event_loop(|ui| ui.set_generating(true))
+                .ok();
+
             slint::spawn_local(async move {
-                let app_state = app_state.borrow();
-                let pert =
-                    Perturbation::new(&app_state.model, app_state.perturbations[0].field_type);
+                let reset = {
+                    let ui_handle = ui_handle.clone();
+                    move || {
+                        ui_handle
+                            .upgrade_in_event_loop(|ui| ui.set_generating(false))
+                            .ok();
+                    }
+                };
+
+                let pick = AsyncFileDialog::new()
+                    .add_filter("ls-dyna", &["k"])
+                    .add_filter("abaqus", &["inp"])
+                    .set_file_name("fields")
+                    .save_file()
+                    .await;
+                let Some(file) = pick else {
+                    reset();
+                    return;
+                };
+                let out_path = file.path().to_path_buf();
+
+                let (model_arc, jobs) = {
+                    let st = app_state.borrow();
+                    (Arc::clone(&st.model), st.perturbations.clone())
+                };
+                if jobs.iter().all(|p| p.fields.is_empty()) {
+                    eprintln!("Нет полей для генерации");
+                    reset();
+                    return;
+                }
+
+                let ui_handle = ui_handle.clone();
+                std::thread::spawn(move || {
+                    let model = model_arc.read().unwrap();
+                    let results: Vec<RandomField> = jobs
+                        .iter()
+                        .flat_map(|p| {
+                            let pert = Perturbation::new(&model, p.field_type);
+                            p.fields.iter().map(move |f| {
+                                RandomField::new()
+                                    .with_id(f.id)
+                                    .with_name(f.name.clone())
+                                    .generate(&pert, f.mean, f.std, f.inverse)
+                            })
+                        })
+                        .collect();
+
+                    let refs: Vec<&RandomField> = results.iter().collect();
+                    let ext = out_path
+                        .extension()
+                        .and_then(|e| e.to_str())
+                        .unwrap_or("")
+                        .to_ascii_lowercase();
+                    let _ = match ext.as_str() {
+                        "k" => save_fields_to_lsdyna(out_path.to_str().unwrap(), &refs),
+                        _ => save_fields_to_abaqus(out_path.to_str().unwrap(), &refs),
+                    };
+                    if save_vtk {
+                        let names: Vec<String> = results.iter().map(|f| f.name.clone()).collect();
+                        let nodal_fields: Vec<NodeScalarField> = names
+                            .iter()
+                            .zip(results.iter())
+                            .map(|(name, f)| (name.as_str(), &f.data))
+                            .collect();
+                        let vtk_path = out_path.with_extension("vtk");
+                        let _ = model.save_vtk(
+                            vtk_path.to_str().unwrap_or_default(),
+                            Some(&nodal_fields),
+                            None,
+                        );
+                    }
+                    drop(model);
+                    let _ = ui_handle.upgrade_in_event_loop(move |ui| {
+                        ui.set_generating(false);
+                    });
+                });
             })
-            .unwrap();
+            .ok(); // не unwrap: без паники, если очередь недоступна
         }
     });
 

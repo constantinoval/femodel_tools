@@ -1,4 +1,4 @@
-import { Button, VerticalBox, GroupBox, HorizontalBox, GridBox, StandardListView, ComboBox, LineEdit, Palette, StandardButton } from "std-widgets.slint";
+import { Button, VerticalBox, GroupBox, HorizontalBox, GridBox, StandardListView, ComboBox, LineEdit, Palette, StandardButton, Switch } from "std-widgets.slint";
 import { PerturbationDialog } from "perturbation-dialog.slint";
 import { FieldPropertiesDialog } from "field-dialog.slint";
 
@@ -9,6 +9,9 @@ export component AppWindow inherits Window {
     in-out property <[StandardListViewItem]> random_fields;
     in-out property <int> current_perturbation_index <=> perturbation_list.current-item;
     in-out property <int> current_field_index <=> field_list.current-item;
+    in-out property <bool> generating: false;
+    out property <bool> is_save_vtk<=>save_vtk.checked;
+
     min-width: 800px;
     min-height: 800px;
     callback choose_file();
@@ -55,6 +58,7 @@ export component AppWindow inherits Window {
                     Button {
                         width: 60px;
                         text: "Open";
+                        enabled: !root.generating;
                         clicked => {
                             choose_file();
                         }
@@ -78,6 +82,7 @@ export component AppWindow inherits Window {
                 HorizontalBox {
                     alignment: start;
                     Button {
+                        enabled: !root.generating;
                         text: "+";
                         width: 30px;
                         clicked => {
@@ -87,7 +92,7 @@ export component AppWindow inherits Window {
                     Button {
                         text:"-";
                         width: 30px;
-                        enabled: current_perturbation_index>=0;
+                        enabled: current_perturbation_index>=0 && !root.generating;
                         clicked => {
                             delete_current_perturbation(current_perturbation_index);
                             change_current_perturbation(current_perturbation_index);
@@ -98,7 +103,7 @@ export component AppWindow inherits Window {
                     alignment: start;
                     Button {
                         text: "+";
-                        enabled: current_perturbation_index>=0;
+                        enabled: current_perturbation_index>=0 && !root.generating;
                         width: 30px;
                         clicked => {
                             add_field_dialog.visible = true;
@@ -106,7 +111,7 @@ export component AppWindow inherits Window {
                     }
                     Button {
                         text:"-";
-                        enabled: current_field_index>=0;
+                        enabled: current_field_index>=0 && !root.generating;
                         width: 30px;
                         clicked => {
                             root.delete_current_field(root.current_perturbation_index, root.current_field_index);
@@ -119,6 +124,7 @@ export component AppWindow inherits Window {
                     border-width: 2px;
                     border-color: Palette.alternate-background;
                     perturbation_list:=StandardListView {
+                        enabled: !root.generating;
                         model: perturbations;
                         changed current-item => {
                             current_perturbation_index = self.current-item;
@@ -130,15 +136,24 @@ export component AppWindow inherits Window {
                     border-width: 2px;
                     border-color: Palette.alternate-background;
                     field_list:=StandardListView {
+                    enabled: !root.generating;
                     model: random_fields;
                     }
                 }
             }
         }
+
+        save_vtk:= Switch{
+            text: "Сохранить файл vtk";
+            checked: true;
+        }
         Button {
-            text: "Генерировать поля";
+            enabled: !root.generating;
+            text: root.generating?"Выполняется генерация подождите":"Генерировать поля";
             clicked => {
+                // root.generating = true;
                 root.generate();
+                // root.generating = false;
             }
         }
     } // main vertical box
