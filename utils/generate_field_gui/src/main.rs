@@ -2,7 +2,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use femodel::prelude::*;
-use femodel::utils::generations::FieldType;
+use femodel::utils::generations::{FieldType, Perturbation};
 use rfd::AsyncFileDialog;
 use slint::{Model, ModelRc, StandardListViewItem, VecModel};
 use std::error::Error;
@@ -88,71 +88,40 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
     });
 
-    // let app = app_state.clone();
-    // let pm = perturbation_model.clone();
-    // ui.on_add_perturbation({
-    //     let app_state = Rc::clone(&app_state);
-    //     let ui = ui_handle.unwrap();
-    //     let pm = Rc::clone(&perturbation_model);
-    //     move |field_type: i32, params: ModelRc<f32>| {
-    //         let params: Vec<f32> = params.iter().collect();
-    //         // let perturbation_model = pm.clone();
-    //         match field_type {
-    //             0 => {
-    //                 let lc = params.first().unwrap_or(&1.0);
-    //                 let p = PerturbationDraft {
-    //                     field_type: FieldType::Isotropic(*lc),
-    //                     fields: Vec::new(),
-    //                 };
-    //                 app_state.borrow_mut().perturbations.push(p);
-    //                 pm.push(StandardListViewItem::from(
-    //                     String::from(&FieldType::Isotropic(*lc)).as_str(),
-    //                 ));
-    //             }
-    //             1 => {
-    //                 let p = PerturbationDraft {
-    //                     field_type: FieldType::Orthotropic(params[0], params[1], params[2]),
-    //                     fields: Vec::new(),
-    //                 };
-    //                 app_state.borrow_mut().perturbations.push(p);
-    //                 pm.push(StandardListViewItem::from(
-    //                     String::from(&FieldType::Orthotropic(params[0], params[1], params[2]))
-    //                         .as_str(),
-    //                 ));
-    //             }
-    //             _ => {}
-    //         }
-    //         let idx = (app_state.borrow().perturbations.len() - 1) as i32;
-    //         ui.set_current_perturbation_index(idx);
-    //     }
-    // });
-
-    ui.on_perturbation_accepted({
+    ui.on_add_perturbation({
         let app_state = Rc::clone(&app_state);
-        let ui_handle = ui.as_weak();
+        let ui = ui_handle.unwrap();
         let pm = Rc::clone(&perturbation_model);
-        move |kind: i32, params: ModelRc<f32>| {
-            let v: Vec<f32> = params.iter().collect();
-            let field_type = match (kind, v.as_slice()) {
-                (0, [lc, ..]) => FieldType::Isotropic(*lc),
-                (1, [lx, ly, lz, ..]) => FieldType::Orthotropic(*lx, *ly, *lz),
-                _ => return, // Slint уже гарантировал длину, но не паникуем
-            };
-
-            let label = String::from(&field_type); // Display/From в femodel
-            app_state
-                .borrow_mut()
-                .perturbations
-                .push(PerturbationDraft {
-                    field_type,
-                    fields: Vec::new(),
-                });
-            pm.push(StandardListViewItem::from(label.as_str()));
-
-            let len = app_state.borrow().perturbations.len();
-            if let Some(ui) = ui_handle.upgrade() {
-                ui.set_current_perturbation_index(if len == 0 { -1 } else { (len - 1) as i32 });
+        move |field_type: i32, params: ModelRc<f32>| {
+            let params: Vec<f32> = params.iter().collect();
+            // let perturbation_model = pm.clone();
+            match field_type {
+                0 => {
+                    let lc = params.first().unwrap_or(&1.0);
+                    let p = PerturbationDraft {
+                        field_type: FieldType::Isotropic(*lc),
+                        fields: Vec::new(),
+                    };
+                    app_state.borrow_mut().perturbations.push(p);
+                    pm.push(StandardListViewItem::from(
+                        String::from(&FieldType::Isotropic(*lc)).as_str(),
+                    ));
+                }
+                1 => {
+                    let p = PerturbationDraft {
+                        field_type: FieldType::Orthotropic(params[0], params[1], params[2]),
+                        fields: Vec::new(),
+                    };
+                    app_state.borrow_mut().perturbations.push(p);
+                    pm.push(StandardListViewItem::from(
+                        String::from(&FieldType::Orthotropic(params[0], params[1], params[2]))
+                            .as_str(),
+                    ));
+                }
+                _ => {}
             }
+            let idx = (app_state.borrow().perturbations.len() - 1) as i32;
+            ui.set_current_perturbation_index(idx);
         }
     });
 
@@ -162,12 +131,81 @@ fn main() -> Result<(), Box<dyn Error>> {
         let app_state = Rc::clone(&app_state);
         let pm = Rc::clone(&perturbation_model);
         move |idx: i32| {
-            if idx == -1 {
+            let n = app_state.borrow().perturbations.len();
+            if idx == -1 || n == 0 || idx as usize >= n {
                 return;
-            }
+            };
             // let perturbation_model = pm;
             app_state.borrow_mut().perturbations.remove(idx as usize);
             pm.remove(idx as usize);
+        }
+    });
+
+    ui.on_add_field({
+        let app_state = app_state.clone();
+        let fm = fields_model.clone();
+        move |idx, id, name, mean, std, inverse| {
+            app_state.borrow_mut().perturbations[idx as usize]
+                .fields
+                .push(FieldDraft {
+                    id: id as usize,
+                    name: String::from(&name),
+                    mean,
+                    std,
+                    inverse,
+                });
+            fm.push(StandardListViewItem::from(
+                String::from(format!(
+                    "id({}), name({}), mean({}), std({}), inverse({})",
+                    id, name, mean, std, inverse
+                ))
+                .as_str(),
+            ));
+        }
+    });
+
+    ui.on_change_current_perturbation({
+        let app_state = app_state.clone();
+        let fm = fields_model.clone();
+        move |idx| {
+            fm.clear();
+            let n = app_state.borrow().perturbations.len();
+            if idx == -1 || n == 0 || idx as usize >= n {
+                return;
+            }
+            for f in app_state.borrow().perturbations[idx as usize].fields.iter() {
+                fm.push(StandardListViewItem::from(
+                    String::from(format!(
+                        "id({}), name({}), mean({}), std({}), inverse({})",
+                        f.id, f.name, f.mean, f.std, f.inverse
+                    ))
+                    .as_str(),
+                ));
+            }
+        }
+    });
+
+    ui.on_delete_current_field({
+        let app_state = app_state.clone();
+        let fm = fields_model.clone();
+        move |p_idx, f_idx| {
+            app_state.borrow_mut().perturbations[p_idx as usize]
+                .fields
+                .remove(f_idx as usize);
+            fm.remove(f_idx as usize);
+        }
+    });
+
+    ui.on_generate({
+        let app_state = app_state.clone();
+        move || {
+            let app_state = app_state.clone();
+            slint::spawn_local(async move {
+                let app_state = app_state.borrow();
+                let pert =
+                    Perturbation::new(&app_state.model, app_state.perturbations[0].field_type);
+            })
+            .unwrap();
         }
     });
 

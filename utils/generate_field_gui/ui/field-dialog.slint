@@ -1,0 +1,92 @@
+import { Button, ComboBox, LineEdit, Palette, StandardButton, VerticalBox, HorizontalBox, GridBox, Switch } from "std-widgets.slint";
+
+export component FieldPropertiesDialog inherits Rectangle {
+    background: Palette.background;
+    border-width: 2px;
+    border-color: Palette.alternate-foreground;
+    in-out property <string> name <=> field_name.text;
+    in-out property <string> mean <=> field_mean.text;
+    in-out property <string> std <=> field_std.text;
+    in-out property <string> id <=> field_id.text;
+    in-out property <bool> inverse <=> field_inverse.checked;
+    property <bool> valid: mean.to-float()>=0 && std.to-float() > 0 && id.to-float()>0;
+
+    callback accepted(int, string, float, float, bool);
+
+    width: 600px;
+    height: 340px;
+
+    VerticalBox {
+        padding: 12px;
+        // spacing: 8px;
+        Text { text: "Параметры случайного поля"; font-size: 16px; horizontal-alignment: center; height: 30px;}
+        GridBox {
+            Row {
+                Text {
+                    text: "Идентификатор поля";
+                    vertical-alignment: center;
+                }
+                field_id:=LineEdit{
+                    text: "1";
+                    input-type: number;
+                }
+            } // Row 0
+            Row {
+                Text {
+                    vertical-alignment: center;
+                    text: "Имя поля";
+                }
+                field_name:=LineEdit {
+                    placeholder-text: "название поля для записи в файл";
+                }
+            } // Row 1
+            Row {
+                Text {
+                    vertical-alignment: center;
+                    text: "Среднее значение поля";
+                }
+                field_mean:=LineEdit {
+                    input-type: decimal;
+                    text: 0.0;
+                }
+            } // Row 2
+            Row {
+                Text {
+                    vertical-alignment: center;
+                    text: "Стандартное отклонение поля";
+                }
+                field_std:=LineEdit {
+                    input-type: decimal;
+                    text: "1.0";
+                }
+            } // Row 3
+        } // GridBox
+            field_inverse:=Switch {
+                text: "Инвертировать поле";
+            }
+        // сообщение о неверном вводе
+        Text {
+            text: root.valid?"":"Среднее значение должно быть >=0, стандартное отклонение >0, идентификатор >0";
+            color: red;
+            wrap: word-wrap;
+        }
+        HorizontalBox {
+            alignment: end;
+            StandardButton {
+                enabled: root.valid;
+                kind: ok;
+                clicked => {
+                    root.accepted(id.to-float(), name, mean.to-float(), std.to-float(), inverse);
+                    root.id = root.id.to-float() + 1;
+                    root.visible = false;
+                }
+            }
+            StandardButton {
+                kind: cancel;
+                clicked => {
+                    root.visible = false;
+                }
+            }
+        }
+    } //main vertical box
+}

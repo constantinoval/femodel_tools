@@ -1,132 +1,43 @@
 import { Button, VerticalBox, GroupBox, HorizontalBox, GridBox, StandardListView, ComboBox, LineEdit, Palette, StandardButton } from "std-widgets.slint";
 import { PerturbationDialog } from "perturbation-dialog.slint";
-
-// export component PerturbationProperties inherits Rectangle {
-//     in-out property <int> perturbation_type: 0;
-//     in-out property <[float]> parameters: [1.0, 1.0, 1.0];
-//     out property <bool> accepted;
-//     background: Palette.alternate-background;
-//     VerticalBox {
-//     Text {
-//         text: "Параметры распределения";
-//         font-size: 16px;
-//     }
-//     cb:=ComboBox {
-//         model: ["Изотропное", "Ортотропное"];
-//         current-index: perturbation_type;
-//         changed current-index => {
-//             perturbation_type = self.current-index;
-//         }
-//     }
-//     if cb.current-index==0:
-//     VerticalBox {
-//         Text {
-//             text: "Lc";
-//         }
-//         LineEdit {
-//             input-type: InputType.decimal;
-//             text: parameters[0];
-//             edited(text) => {
-//                 parameters = [text.to-float(), parameters[1], parameters[2]];
-//             }
-//         }
-//     }
-//
-//     if cb.current-index==1:
-//     VerticalBox {
-//             GridBox {
-//             Row {
-//                 Text {
-//                     text: "Lx";
-//                 }
-//                 Text {
-//                     text: "Ly";
-//                 }
-//                 Text {
-//                     text: "Lz";
-//                 }
-//             } // Row
-//             Row {
-//                 LineEdit {
-//                     input-type: InputType.decimal;
-//                     text: parameters[0];
-//                     edited(text) => {
-//                         parameters = [text.to-float(), parameters[1], parameters[2]];
-//                     }
-//                 }
-//                 LineEdit {
-//                     input-type: InputType.decimal;
-//                     text: parameters[1];
-//                     edited(text) => {
-//                         parameters = [parameters[0], text.to-float(), parameters[2]];
-//                     }
-//                 }
-//                 LineEdit {
-//                     input-type: InputType.decimal;
-//                     text: parameters[2];
-//                     edited(text) => {
-//                         parameters = [parameters[0], parameters[1], text.to-float()];
-//                     }
-//                 }
-//             } // Row
-//         }
-//     }
-// }
-// }
+import { FieldPropertiesDialog } from "field-dialog.slint";
 
 export component AppWindow inherits Window {
     in-out property <string> file_path: "выберите k или inp файл";
     in property <string> model_info: "";
     in-out property <[StandardListViewItem]> perturbations;
     in-out property <[StandardListViewItem]> random_fields;
-    in-out property <int> current_perturbation_index: -1;
-    out property <bool> perturbation_dialog_open: false;
-
-    preferred-width: 800px;
-    preferred-height: 800px;
+    in-out property <int> current_perturbation_index <=> perturbation_list.current-item;
+    in-out property <int> current_field_index <=> field_list.current-item;
+    min-width: 800px;
+    min-height: 800px;
     callback choose_file();
     callback add_perturbation(int, [float]);
     callback change_current_perturbation(int);
     callback delete_current_perturbation(int);
-    callback perturbation_accepted(int, [float]);
+    callback delete_current_field(int, int);
+    callback add_field(int, int, string, float, float, bool); // add field to perturbation index with id, name, mean, std and inverted
+    callback generate();
 
-    perturbation_dialog := PerturbationDialog {
-        accepted(kind, params) => {
-            root.perturbation_accepted(kind, params);
-            root.perturbation_dialog_open = false;
+    property <bool> main_context_visible: !(add_perturbation_dialog.visible || add_field_dialog.visible);
+
+    add_perturbation_dialog:= PerturbationDialog {
+        visible: false;
+        accepted (perturbation_type, props) => {
+            root.add_perturbation(perturbation-type, props);
         }
-        rejected() => { root.perturbation_dialog_open = false; }
     }
 
+    add_field_dialog:= FieldPropertiesDialog {
+        visible: false;
+        accepted (id, name, mean, std, inverse) => {
+            root.add_field(current_perturbation_index, id, name, mean, std, inverse);
+        }
+    }
 
     VerticalBox {
+        visible: main_context_visible;
         // alignment: start;
-        // pp:= PopupWindow {
-        //     close-policy: close-on-click-outside;
-        //     x: 20px;
-        //     y: 20px;
-        //     Rectangle {
-        //         background: Palette.alternate-background;
-        //         VerticalLayout {
-        //         pert_props:=PerturbationProperties {}
-        //         HorizontalBox {
-        //             StandardButton {
-        //                 kind: ok;
-        //                 clicked => {
-        //                     add_perturbation(pert_props.perturbation_type, pert_props.parameters);
-        //                     pp.close();
-        //                 }
-        //             }
-        //             StandardButton {
-        //                 kind: cancel;
-        //                 clicked => {
-        //                     pp.close();
-        //                 }
-        //             }
-        //         }
-        //         }
-        //     }
-        // }
         // open file group
         Rectangle {
             border-width: 3px;
@@ -150,11 +61,11 @@ export component AppWindow inherits Window {
                     }
                 }
             } // open file group
-        }
-        }
         Text {
             vertical-stretch: 0.0;
             text: model_info;
+        }
+        }
         }
         GridBox {
             horizontal-stretch: 1.0;
@@ -170,19 +81,16 @@ export component AppWindow inherits Window {
                         text: "+";
                         width: 30px;
                         clicked => {
-                            perturbation_dialog.perturbation_type = 0;
-                            perturbation_dialog.lc = 1.0;
-                            perturbation_dialog.lx = 1.0;
-                            perturbation_dialog.ly = 1.0;
-                            perturbation_dialog.lz = 1.0;
-                            perturbation_dialog.show();
+                            add_perturbation_dialog.visible = true;
                         };
                     }
                     Button {
                         text:"-";
                         width: 30px;
+                        enabled: current_perturbation_index>=0;
                         clicked => {
                             delete_current_perturbation(current_perturbation_index);
+                            change_current_perturbation(current_perturbation_index);
                         }
                     }
                 }
@@ -190,11 +98,19 @@ export component AppWindow inherits Window {
                     alignment: start;
                     Button {
                         text: "+";
+                        enabled: current_perturbation_index>=0;
                         width: 30px;
+                        clicked => {
+                            add_field_dialog.visible = true;
+                        }
                     }
                     Button {
                         text:"-";
+                        enabled: current_field_index>=0;
                         width: 30px;
+                        clicked => {
+                            root.delete_current_field(root.current_perturbation_index, root.current_field_index);
+                        }
                     }
                 }
             }
@@ -202,9 +118,8 @@ export component AppWindow inherits Window {
                 Rectangle {
                     border-width: 2px;
                     border-color: Palette.alternate-background;
-                    StandardListView {
+                    perturbation_list:=StandardListView {
                         model: perturbations;
-                        current-item: current_perturbation_index;
                         changed current-item => {
                             current_perturbation_index = self.current-item;
                             change_current_perturbation(self.current-item);
@@ -214,11 +129,18 @@ export component AppWindow inherits Window {
                 Rectangle {
                     border-width: 2px;
                     border-color: Palette.alternate-background;
-                    StandardListView {
+                    field_list:=StandardListView {
                     model: random_fields;
                     }
                 }
             }
         }
-    }
+        Button {
+            text: "Генерировать поля";
+            clicked => {
+                root.generate();
+            }
+        }
+    } // main vertical box
+
 }

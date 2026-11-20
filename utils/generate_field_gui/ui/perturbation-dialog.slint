@@ -1,28 +1,29 @@
 // ui/perturbation-dialog.slint
 import { Button, ComboBox, LineEdit, Palette, StandardButton, VerticalBox, HorizontalBox, GridBox } from "std-widgets.slint";
 
-export component PerturbationDialog inherits PopupWindow {
+export component PerturbationDialog inherits Rectangle {
     in-out property <int> perturbation_type: 0;
     in-out property <float> lc: 1.0;
     in-out property <float> lx: 1.0;
     in-out property <float> ly: 1.0;
     in-out property <float> lz: 1.0;
 
-    // результат: true + параметры
+    // результат: тип распределения + параметры
     callback accepted(int, [float]);
     callback rejected();
 
     // валидация: все нужные значения > 0
     property <bool> valid: perturbation_type == 0 ? lc > 0 : lx > 0 && ly > 0 && lz > 0;
-
-    close-policy: close-on-click-outside;
-    width: 420px;
-    // height: layout.min-height;
+    width: 600px;
+    height: 250px;
+    background: Palette.background;
+    border-width: 2px;
+    border-color: Palette.alternate-foreground;
 
     VerticalBox {
         padding: 12px;
-        spacing: 8px;
-        Text { text: "Параметры распределения"; font-size: 16px; }
+        // spacing: 8px;
+        Text { text: "Параметры распределения"; font-size: 16px; horizontal-alignment: center; height: 30px;}
 
         cb := ComboBox {
             model: ["Изотропное", "Ортотропное"];
@@ -33,22 +34,25 @@ export component PerturbationDialog inherits PopupWindow {
             Text { text: "Lc"; vertical-alignment: center; }
             LineEdit {
                 input-type: InputType.decimal;
-                text: root.lc;                 // двусторонняя привязка
+                text: root.lc;
+                edited(text) => {
+                    root.lc = text.to-float();
+                }
             }
         }
 
         if root.perturbation_type == 1: GridBox {
             Row { Text { text: "Lx"; } Text { text: "Ly"; } Text { text: "Lz"; } }
             Row {
-                LineEdit { input-type: InputType.decimal; text: root.lx; }
-                LineEdit { input-type: InputType.decimal; text: root.ly; }
-                LineEdit { input-type: InputType.decimal; text: root.lz; }
+                LineEdit { input-type: InputType.decimal; text: root.lx; edited(text) => {root.lx=text.to-float();}}
+                LineEdit { input-type: InputType.decimal; text: root.ly; edited(text) => {root.ly=text.to-float();}}
+                LineEdit { input-type: InputType.decimal; text: root.lz; edited(text) => {root.lz=text.to-float();}}
             }
         }
 
         // сообщение о неверном вводе
-        if !root.valid: Text {
-            text: "Все масштабы корреляции должны быть > 0";
+        Text {
+            text: root.valid?"":"Все масштабы корреляции должны быть > 0";
             color: red;
             wrap: word-wrap;
         }
@@ -56,10 +60,6 @@ export component PerturbationDialog inherits PopupWindow {
         HorizontalBox {
             alignment: end;
             spacing: 6px;
-            StandardButton {
-                kind: cancel;
-                clicked => { root.close(); root.rejected(); }
-            }
             StandardButton {
                 kind: ok;
                 enabled: root.valid;
@@ -70,8 +70,12 @@ export component PerturbationDialog inherits PopupWindow {
                             ? [root.lc]
                             : [root.lx, root.ly, root.lz]
                     );
-                    root.close();
+                    root.visible = false;
                 }
+            }
+            StandardButton {
+                kind: cancel;
+                clicked => { root.visible=false; root.rejected(); }
             }
         }
     }

@@ -11,7 +11,7 @@ use std::fmt;
 use std::io::Write;
 
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 pub enum FieldType {
     Isotropic(f32),
     Orthotropic(f32, f32, f32),
