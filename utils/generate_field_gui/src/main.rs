@@ -425,7 +425,6 @@ fn main() -> Result<(), Box<dyn Error>> {
                     None => (0, vec![1.0]),
                 }
             };
-
             PerturbationProps {
                 kind,
                 params: ModelRc::from(Rc::new(VecModel::from(params))),

@@ -3,17 +3,17 @@ import { Button, ComboBox, LineEdit, Palette, StandardButton, VerticalBox, Horiz
 
 export component PerturbationDialog inherits Rectangle {
     in-out property <int> perturbation_type: 0;
-    in-out property <float> lc: 1.0;
-    in-out property <float> lx: 1.0;
-    in-out property <float> ly: 1.0;
-    in-out property <float> lz: 1.0;
+    in-out property <string> lc: "1.0";
+    in-out property <string> lx: "1.0";
+    in-out property <string> ly: "1.0";
+    in-out property <string> lz: "1.0";
 
     // результат: тип распределения + параметры
     callback accepted(int, [float]);
     callback rejected();
 
     // валидация: все нужные значения > 0
-    property <bool> valid: perturbation_type == 0 ? lc > 0 : lx > 0 && ly > 0 && lz > 0;
+    property <bool> valid: perturbation_type == 0 ? lc.to-float() > 0 : lx.to-float() > 0 && ly.to-float() > 0 && lz.to-float() > 0;
     width: 600px;
     height: 250px;
     background: Palette.background;
@@ -32,21 +32,21 @@ export component PerturbationDialog inherits Rectangle {
 
         if root.perturbation_type == 0: HorizontalBox {
             Text { text: "Lc"; vertical-alignment: center; }
-            LineEdit {
+            lcedit:=LineEdit {
                 input-type: InputType.decimal;
-                text: root.lc;
-                edited(text) => {
-                    root.lc = text.to-float();
-                }
+                text <=> lc;
+                // edited(text) => {
+                    // root.lc = text.to-float();
+                // }
             }
         }
 
         if root.perturbation_type == 1: GridBox {
             Row { Text { text: "Lx"; } Text { text: "Ly"; } Text { text: "Lz"; } }
             Row {
-                LineEdit { input-type: InputType.decimal; text: root.lx; edited(text) => {root.lx=text.to-float();}}
-                LineEdit { input-type: InputType.decimal; text: root.ly; edited(text) => {root.ly=text.to-float();}}
-                LineEdit { input-type: InputType.decimal; text: root.lz; edited(text) => {root.lz=text.to-float();}}
+                LineEdit { input-type: InputType.decimal; text <=> root.lx;}
+                LineEdit { input-type: InputType.decimal; text <=> root.ly;}
+                LineEdit { input-type: InputType.decimal; text <=> root.lz;}
             }
         }
 
@@ -67,8 +67,8 @@ export component PerturbationDialog inherits Rectangle {
                     root.accepted(
                         root.perturbation_type,
                         root.perturbation_type == 0
-                            ? [root.lc]
-                            : [root.lx, root.ly, root.lz]
+                            ? [root.lc.to-float()]
+                            : [root.lx.to-float(), root.ly.to-float(), root.lz.to-float()]
                     );
                     root.visible = false;
                 }
