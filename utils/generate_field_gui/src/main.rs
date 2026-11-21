@@ -6,10 +6,11 @@ use femodel::utils::generations::{
     FieldType, Perturbation, RandomField, save_fields_to_abaqus, save_fields_to_lsdyna,
 };
 use rfd::AsyncFileDialog;
-use slint::{Model, ModelRc, StandardListViewItem, VecModel};
+use slint::{Model, ModelRc, StandardListViewItem, Timer, VecModel};
 use std::cell::RefCell;
 use std::error::Error;
 use std::rc::Rc;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, RwLock};
 
 #[derive(Clone)]
@@ -38,18 +39,20 @@ struct GenerationJob {
     drafts: Vec<PerturbationDraft>,
     output: std::path::PathBuf,
     save_vtk: bool,
+    counter: Arc<AtomicU32>,
+    total: Arc<AtomicU32>,
 }
 
 impl AppState {
     /// Клонирует данные для фонового потока. Вызывать только на UI-потоке.
-    fn snapshot_for_generation(&self, output: std::path::PathBuf, save_vtk: bool) -> GenerationJob {
-        GenerationJob {
-            model: Arc::clone(&self.model),
-            drafts: self.perturbations.clone(),
-            output,
-            save_vtk,
-        }
-    }
+    // fn snapshot_for_generation(&self, output: std::path::PathBuf, save_vtk: bool) -> GenerationJob {
+    //     GenerationJob {
+    //         model: Arc::clone(&self.model),
+    //         drafts: self.perturbations.clone(),
+    //         output,
+    //         save_vtk,
+    //     }
+    // }
 
     fn ready_to_generate(&self) -> bool {
         let has_nodes = self
@@ -65,12 +68,17 @@ impl AppState {
 /// Возвращает текст статуса для UI.
 fn run_generation(job: GenerationJob) -> String {
     let model = job.model.read().unwrap();
-
+    // let total = job.total.clone();
+    job.total.store(
+        (model.nodes.len() * job.drafts.len()) as u32,
+        Ordering::Relaxed,
+    );
+    job.counter.store(0, Ordering::Relaxed);
     let results: Vec<RandomField> = job
         .drafts
         .iter()
         .flat_map(|p| {
-            let pert = Perturbation::new(&model, p.field_type);
+            let pert = Perturbation::new_with_status(&model, p.field_type, job.counter.clone());
             p.fields.iter().map(move |f| {
                 RandomField::new()
                     .with_id(f.id)
@@ -126,6 +134,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         perturbations: Vec::new(),
     }));
 
+    let progress_timer = Timer::default();
+
     // let m = Rc::new(std::cell::RefCell::new(FEModel::default()));
 
     let items: Vec<StandardListViewItem> = Vec::new();
@@ -136,6 +146,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     let fields_model = Rc::new(VecModel::from(items));
     ui.set_random_fields(ModelRc::from(fields_model.clone()));
 
+    let counter = Arc::new(AtomicU32::new(0));
+    let total = Arc::new(AtomicU32::new(0));
     // выбор и чтение файла с сеточной моделью
     // let app = app_state.clone();
     // let ui_handle1 = ui_handle.clone();
@@ -300,7 +312,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         let app_state = app_state.clone();
         let ui_handle = ui_handle.clone();
         let ui = ui_handle.unwrap();
-
+        let counter = Arc::clone(&counter);
+        let total = Arc::clone(&total);
         move || {
             let snapshot = {
                 let st = app_state.borrow();
@@ -316,10 +329,16 @@ fn main() -> Result<(), Box<dyn Error>> {
             drop(snapshot);
 
             ui_handle
-                .upgrade_in_event_loop(|ui| ui.set_generating(true))
+                .upgrade_in_event_loop(|ui| {
+                    ui.set_generating(true);
+                    ui.set_progress(0.0);
+                })
                 .ok();
 
             let ui_handle = ui_handle.clone();
+            let counter = Arc::clone(&counter);
+            let total = Arc::clone(&total);
+            // let total
             // log::info!("generation started");
             // let app_state = app_state.clone();
 
@@ -332,7 +351,9 @@ fn main() -> Result<(), Box<dyn Error>> {
                     .await
                 else {
                     ui_handle
-                        .upgrade_in_event_loop(|ui| ui.set_generating(false))
+                        .upgrade_in_event_loop(|ui| {
+                            ui.set_generating(false);
+                        })
                         .ok();
                     return;
                 };
@@ -345,6 +366,8 @@ fn main() -> Result<(), Box<dyn Error>> {
                         drafts: drafts.clone(),
                         output: file.path().to_path_buf(),
                         save_vtk,
+                        counter,
+                        total,
                     }
                 };
 
@@ -355,6 +378,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                         .upgrade_in_event_loop(move |ui| {
                             ui.set_model_info(status.into());
                             ui.set_generating(false);
+                            ui.set_progress(1.0);
                         })
                         .ok();
                 });
@@ -460,6 +484,21 @@ fn main() -> Result<(), Box<dyn Error>> {
         }
     });
 
+    progress_timer.start(
+        slint::TimerMode::Repeated,
+        std::time::Duration::from_millis(500),
+        {
+            let counter = Arc::clone(&counter);
+            let total = Arc::clone(&total);
+            let ui = ui_handle.unwrap();
+            move || {
+                let frac = (counter.load(Ordering::Relaxed) as f32
+                    / total.load(Ordering::Relaxed) as f32)
+                    .clamp(0.0, 1.0);
+                ui.set_progress(frac);
+            }
+        },
+    );
     ui.run()?;
 
     Ok(())

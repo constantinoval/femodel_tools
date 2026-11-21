@@ -1,4 +1,4 @@
-import { Button, VerticalBox, GroupBox, HorizontalBox, GridBox, StandardListView, ComboBox, LineEdit, Palette, StandardButton, Switch } from "std-widgets.slint";
+import { Button, VerticalBox, GroupBox, HorizontalBox, GridBox, StandardListView, ComboBox, LineEdit, Palette, StandardButton, Switch, ProgressIndicator } from "std-widgets.slint";
 import { PerturbationDialog } from "perturbation-dialog.slint";
 import { FieldPropertiesDialog } from "field-dialog.slint";
 
@@ -26,6 +26,7 @@ export component AppWindow inherits Window {
     out property <bool> is_save_vtk<=>save_vtk.checked;
     in-out property <FieldProps> current_field_props;
     in-out property <PerturbationProps> current_perturbation_props;
+    in-out property <float> progress;
     property <bool> dialog_edit_mode: false;
 
     min-width: 800px;
@@ -260,6 +261,10 @@ export component AppWindow inherits Window {
                 root.generate();
                 // root.generating = false;
             }
+        }
+        ProgressIndicator {
+            height: 20px;
+            progress <=> root.progress;
         }
     } // main vertical box
 
