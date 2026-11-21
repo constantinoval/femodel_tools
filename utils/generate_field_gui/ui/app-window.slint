@@ -2,6 +2,19 @@ import { Button, VerticalBox, GroupBox, HorizontalBox, GridBox, StandardListView
 import { PerturbationDialog } from "perturbation-dialog.slint";
 import { FieldPropertiesDialog } from "field-dialog.slint";
 
+export struct FieldProps {
+    id: int,
+    name: string,
+    mean: float,
+    std: float,
+    inverse: bool
+}
+
+export struct PerturbationProps {
+    kind: int,
+    params: [float],
+}
+
 export component AppWindow inherits Window {
     in-out property <string> file_path: "выберите k или inp файл";
     in property <string> model_info: "";
@@ -11,30 +24,82 @@ export component AppWindow inherits Window {
     in-out property <int> current_field_index <=> field_list.current-item;
     in-out property <bool> generating: false;
     out property <bool> is_save_vtk<=>save_vtk.checked;
+    in-out property <FieldProps> current_field_props;
+    in-out property <PerturbationProps> current_perturbation_props;
+    property <bool> dialog_edit_mode: false;
 
     min-width: 800px;
-    min-height: 800px;
+    min-height: 600px;
     callback choose_file();
     callback add_perturbation(int, [float]);
     callback change_current_perturbation(int);
     callback delete_current_perturbation(int);
     callback delete_current_field(int, int);
-    callback add_field(int, int, string, float, float, bool); // add field to perturbation index with id, name, mean, std and inverted
+    callback add_field(int, FieldProps); // add field to perturbation index with id, name, mean, std and inverted
     callback generate();
+    callback get_current_field_data(int, int)-> FieldProps;
+    callback edit_field(int, int, FieldProps);
+    callback get_current_perturbation_data(int)-> PerturbationProps;
+    callback edit_perturbation(int, PerturbationProps);
+
 
     property <bool> main_context_visible: !(add_perturbation_dialog.visible || add_field_dialog.visible);
 
     add_perturbation_dialog:= PerturbationDialog {
         visible: false;
-        accepted (perturbation_type, props) => {
-            root.add_perturbation(perturbation-type, props);
+        accepted (perturbation_type, params) => {
+            current_perturbation_props.kind = perturbation_type;
+            current_perturbation_props.params = params;
+            if !root.dialog_edit_mode {
+                root.add_perturbation(perturbation_type, params);
+            } else {
+                root.edit_perturbation(root.current_perturbation_index, root.current_perturbation_props);
+            }
         }
     }
 
     add_field_dialog:= FieldPropertiesDialog {
         visible: false;
         accepted (id, name, mean, std, inverse) => {
-            root.add_field(current_perturbation_index, id, name, mean, std, inverse);
+            current_field_props.id = id;
+            current_field_props.name = name;
+            current_field_props.mean = mean;
+            current_field_props.std = std;
+            current_field_props.inverse = inverse;
+            if !root.dialog_edit_mode {
+                root.add_field(current_perturbation_index, current_field_props);
+            } else {
+                root.edit_field(current_perturbation_index, current_field_index, current_field_props);
+            }
+        }
+    }
+
+    MenuBar {
+        Menu {
+            title: "Файл";
+            MenuItem {
+                enabled: !root.generating;
+                title: "Открыть файл с сеточной моделью";
+                activated => {
+                    root.choose_file();
+                }
+            }
+            MenuItem {
+                enabled: !root.generating;
+                title: "Генерировать и сохранить поля";
+                activated => {
+                    root.generate();
+                }
+            }
+            MenuSeparator {}
+            MenuItem {
+                title: "Сохранить настройки генерации";
+            }
+            MenuItem {
+                title: "Загрузить настройки генерации";
+            }
+            MenuSeparator {}
+            MenuItem { title: "Выход"; enabled:!root.generating; activated => { root.close();}}
         }
     }
 
@@ -86,6 +151,7 @@ export component AppWindow inherits Window {
                         text: "+";
                         width: 30px;
                         clicked => {
+                            root.dialog_edit_mode = false;
                             add_perturbation_dialog.visible = true;
                         };
                     }
@@ -95,10 +161,31 @@ export component AppWindow inherits Window {
                         enabled: current_perturbation_index>=0 && !root.generating;
                         clicked => {
                             delete_current_perturbation(current_perturbation_index);
+                            current_perturbation_index = -1;
                             change_current_perturbation(current_perturbation_index);
                         }
                     }
-                }
+                    Button {
+                        text: "Edit";
+                        enabled: current_perturbation_index>=0 && !root.generating;
+                        clicked => {
+                            current_perturbation_props = get_current_perturbation_data(current_perturbation_index);
+                            add_perturbation_dialog.perturbation_type = current_perturbation_props.kind;
+                            if current_perturbation_props.kind == 0 {
+                                add_perturbation_dialog.lc = current_perturbation_props.params[0];
+                            }
+                            if current_perturbation_props.kind == 1 {
+                                add_perturbation_dialog.lx = current_perturbation_props.params[0];
+                                add_perturbation_dialog.ly = current_perturbation_props.params[1];
+                                add_perturbation_dialog.lz = current_perturbation_props.params[2];
+                            }
+                            root.dialog_edit_mode = true;
+                            add_perturbation_dialog.visible = true;
+                        }
+                    }
+                } // hbox
+
+
                 HorizontalBox {
                     alignment: start;
                     Button {
@@ -106,6 +193,7 @@ export component AppWindow inherits Window {
                         enabled: current_perturbation_index>=0 && !root.generating;
                         width: 30px;
                         clicked => {
+                            root.dialog_edit_mode = false;
                             add_field_dialog.visible = true;
                         }
                     }
@@ -115,9 +203,24 @@ export component AppWindow inherits Window {
                         width: 30px;
                         clicked => {
                             root.delete_current_field(root.current_perturbation_index, root.current_field_index);
+                            current_field_index = -1;
                         }
                     }
-                }
+                    Button {
+                        text: "Edit";
+                        enabled: current_field_index>=0 && !root.generating;
+                        clicked => {
+                            current_field_props = get_current_field_data(current_perturbation_index, current_field_index);
+                            add_field_dialog.name = current_field_props.name;
+                            add_field_dialog.id = current_field_props.id;
+                            add_field_dialog.mean = current_field_props.mean;
+                            add_field_dialog.std = current_field_props.std;
+                            add_field_dialog.inverse = current_field_props.inverse;
+                            root.dialog_edit_mode = true;
+                            add_field_dialog.visible = true;
+                        }
+                    }
+                    }
             }
             Row {
                 Rectangle {
@@ -136,8 +239,8 @@ export component AppWindow inherits Window {
                     border-width: 2px;
                     border-color: Palette.alternate-background;
                     field_list:=StandardListView {
-                    enabled: !root.generating;
-                    model: random_fields;
+                        enabled: !root.generating;
+                        model: random_fields;
                     }
                 }
             }
@@ -149,7 +252,7 @@ export component AppWindow inherits Window {
         }
         Button {
             enabled: !root.generating;
-            text: root.generating?"Выполняется генерация подождите":"Генерировать поля";
+            text: root.generating?"Выполняется генерация подождите":"Генерировать и сохранить поля";
             clicked => {
                 // root.generating = true;
                 root.generate();

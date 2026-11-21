@@ -113,7 +113,6 @@ fn run_generation(job: GenerationJob) -> String {
             Err(e) => status += &format!("\nОшибка VTK: {e}"),
         }
     }
-
     status
 }
 
@@ -245,20 +244,20 @@ fn main() -> Result<(), Box<dyn Error>> {
     ui.on_add_field({
         let app_state = app_state.clone();
         let fm = fields_model.clone();
-        move |idx, id, name, mean, std, inverse| {
+        move |idx, fp: FieldProps| {
             app_state.borrow_mut().perturbations[idx as usize]
                 .fields
                 .push(FieldDraft {
-                    id: id as usize,
-                    name: String::from(&name),
-                    mean,
-                    std,
-                    inverse,
+                    id: fp.id as usize,
+                    name: String::from(&fp.name),
+                    mean: fp.mean,
+                    std: fp.std,
+                    inverse: fp.inverse,
                 });
             fm.push(StandardListViewItem::from(
                 String::from(format!(
                     "id({}), name({}), mean({}), std({}), inverse({})",
-                    id, name, mean, std, inverse
+                    fp.id, fp.name, fp.mean, fp.std, fp.inverse
                 ))
                 .as_str(),
             ));
@@ -361,6 +360,104 @@ fn main() -> Result<(), Box<dyn Error>> {
                 });
             })
             .ok();
+        }
+    });
+
+    ui.on_get_current_field_data({
+        // let ui = ui_handle.unwrap();
+        let app_state = app_state.clone();
+        move |p_idx, f_idx| {
+            let app_state = app_state.borrow();
+            if let Some(p) = app_state.perturbations.get(p_idx as usize) {
+                if let Some(f) = p.fields.get(f_idx as usize) {
+                    return FieldProps {
+                        id: f.id as i32,
+                        name: String::from(&f.name).into(),
+                        mean: f.mean,
+                        std: f.std,
+                        inverse: f.inverse,
+                    };
+                }
+            };
+            FieldProps {
+                id: 1,
+                name: "".into(),
+                mean: 0.0,
+                std: 1.0,
+                inverse: false,
+            }
+        }
+    });
+
+    ui.on_edit_field({
+        let app_state = app_state.clone();
+        let fm = fields_model.clone();
+        move |p_idx, f_idx, fp| {
+            let mut app_state = app_state.borrow_mut();
+            if let Some(p) = app_state.perturbations.get_mut(p_idx as usize) {
+                if let Some(f) = p.fields.get_mut(f_idx as usize) {
+                    f.id = fp.id as usize;
+                    f.name = String::from(&fp.name);
+                    f.mean = fp.mean;
+                    f.std = fp.std;
+                    f.inverse = fp.inverse;
+                }
+            };
+            let item = StandardListViewItem::from(
+                format!(
+                    "id({}), name({}), mean({}), std({}), inverse({})",
+                    fp.id, fp.name, fp.mean, fp.std, fp.inverse
+                )
+                .as_str(),
+            );
+            fm.set_row_data(f_idx as usize, item);
+        }
+    });
+
+    ui.on_get_current_perturbation_data({
+        let app_state = app_state.clone();
+        move |p_idx: i32| -> PerturbationProps {
+            let (kind, params): (i32, Vec<f32>) = {
+                let st = app_state.borrow();
+                match st.perturbations.get(p_idx as usize).map(|p| p.field_type) {
+                    Some(FieldType::Isotropic(lc)) => (0, vec![lc]),
+                    Some(FieldType::Orthotropic(lx, ly, lz)) => (1, vec![lx, ly, lz]),
+                    None => (0, vec![1.0]),
+                }
+            };
+
+            PerturbationProps {
+                kind,
+                params: ModelRc::from(Rc::new(VecModel::from(params))),
+            }
+        }
+    });
+
+    ui.on_edit_perturbation({
+        let app_state = app_state.clone();
+        let pm = perturbation_model.clone();
+        move |idx, pprops| {
+            let mut st = app_state.borrow_mut();
+            if let Some(p) = st.perturbations.get_mut(idx as usize) {
+                let params: Vec<f32> = pprops.params.iter().collect();
+                let s: String = match pprops.kind {
+                    0 => {
+                        if let Some(&lc) = params.first() {
+                            p.field_type = FieldType::Isotropic(lc);
+                        }
+                        String::from(&p.field_type)
+                    }
+                    1 => {
+                        if let [lx, ly, lz] = params[..3] {
+                            p.field_type = FieldType::Orthotropic(lx, ly, lz);
+                        }
+                        String::from(&p.field_type)
+                    }
+                    _ => "".to_string(),
+                };
+                let item = StandardListViewItem::from(s.as_str());
+                pm.set_row_data(idx as usize, item);
+            }
         }
     });
 
