@@ -114,15 +114,15 @@ impl FEModel {
                 (n0.n, mean / sigma)
             })
             .collect();
-        let zs = z.values().copied().collect::<Vec<f32>>();
-        let (mean, std) = mean_and_std(&zs);
-        let z: HashMap<usize, f32> = z
-            .par_iter()
-            .map(|(n, zz)| {
-                let zzz = (zz - mean) / std;
-                (*n, zzz)
-            })
-            .collect();
+        // let zs = z.values().copied().collect::<Vec<f32>>();
+        // let (mean, std) = mean_and_std(&zs);
+        // let z: HashMap<usize, f32> = z
+        //     .par_iter()
+        //     .map(|(n, zz)| {
+        //         let zzz = (zz - mean) / std;
+        //         (*n, zzz)
+        //     })
+        //     .collect();
         bar.finish();
         z
     }
@@ -160,15 +160,15 @@ impl FEModel {
                 (n0.n, mean / sigma)
             })
             .collect();
-        let zs = z.values().copied().collect::<Vec<f32>>();
-        let (mean, std) = mean_and_std(&zs);
-        let z: HashMap<usize, f32> = z
-            .par_iter()
-            .map(|(n, zz)| {
-                let zzz = (zz - mean) / std;
-                (*n, zzz)
-            })
-            .collect();
+        // let zs = z.values().copied().collect::<Vec<f32>>();
+        // let (mean, std) = mean_and_std(&zs);
+        // let z: HashMap<usize, f32> = z
+        //     .par_iter()
+        //     .map(|(n, zz)| {
+        //         let zzz = (zz - mean) / std;
+        //         (*n, zzz)
+        //     })
+        //     .collect();
         z
     }
 
@@ -225,15 +225,15 @@ impl FEModel {
                 (n0.n, mean / sigma)
             })
             .collect();
-        let zs = z.values().copied().collect::<Vec<f32>>();
-        let (mean, std) = mean_and_std(&zs);
-        let z: HashMap<usize, f32> = z
-            .par_iter()
-            .map(|(n, zz)| {
-                let zzz = (zz - mean) / std;
-                (*n, zzz)
-            })
-            .collect();
+        // let zs = z.values().copied().collect::<Vec<f32>>();
+        // let (mean, std) = mean_and_std(&zs);
+        // let z: HashMap<usize, f32> = z
+        //     .par_iter()
+        //     .map(|(n, zz)| {
+        //         let zzz = (zz - mean) / std;
+        //         (*n, zzz)
+        //     })
+        //     .collect();
         bar.finish();
         z
     }
@@ -283,15 +283,15 @@ impl FEModel {
                 (n0.n, mean / sigma)
             })
             .collect();
-        let zs = z.values().copied().collect::<Vec<f32>>();
-        let (mean, std) = mean_and_std(&zs);
-        let z: HashMap<usize, f32> = z
-            .par_iter()
-            .map(|(n, zz)| {
-                let zzz = (zz - mean) / std;
-                (*n, zzz)
-            })
-            .collect();
+        // let zs = z.values().copied().collect::<Vec<f32>>();
+        // let (mean, std) = mean_and_std(&zs);
+        // let z: HashMap<usize, f32> = z
+        //     .par_iter()
+        //     .map(|(n, zz)| {
+        //         let zzz = (zz - mean) / std;
+        //         (*n, zzz)
+        //     })
+        //     .collect();
         z
     }
 

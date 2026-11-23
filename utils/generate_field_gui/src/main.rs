@@ -162,6 +162,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                     .add_filter("supported meshes", &["k", "inp"])
                     .add_filter("ls-dyna mesh", &["k"])
                     .add_filter("abaqus mesh", &["inp"])
+                    .set_directory("./")
                     .pick_file()
                     .await;
                 if let Some(path) = pick {
