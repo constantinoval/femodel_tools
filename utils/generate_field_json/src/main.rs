@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 use std::env;
 use std::fs::File;
 use std::io::BufReader;
+use std::path::PathBuf;
 
 #[derive(Serialize, Deserialize, Debug)]
 struct FieldPropertiesJson {
@@ -31,11 +32,65 @@ struct JsonConfig {
     fields: Vec<RandomFieldsJson>,
 }
 
+fn save_json_example(file_path: &str) -> anyhow::Result<()> {
+    let fp1 = FieldPropertiesJson {
+        id: 1,
+        name: "field_1".into(),
+        mean: 100.0,
+        std: 10.0,
+        invert: false,
+    };
+    let fp2 = FieldPropertiesJson {
+        id: 2,
+        name: "field_2".into(),
+        mean: 50.0,
+        std: 2.0,
+        invert: true,
+    };
+    let rf1 = RandomFieldsJson {
+        field_type: FieldType::Isotropic(1.0),
+        properties: vec![fp1, fp2],
+    };
+    let fp3 = FieldPropertiesJson {
+        id: 3,
+        name: "field_3".into(),
+        mean: 1.0,
+        std: 0.1,
+        invert: false,
+    };
+    let rf2 = RandomFieldsJson {
+        field_type: FieldType::Orthotropic(1.0, 2.0, 3.0),
+        properties: vec![fp3],
+    };
+    let jc = JsonConfig {
+        mesh_file: "mesh.k".into(),
+        output: "fieds.k".into(),
+        save_vtk: true,
+        fields: vec![rf1, rf2],
+    };
+
+    let s = serde_json::to_string_pretty(&jc)?;
+    std::fs::write(file_path, s)?;
+    Ok(())
+}
+
 fn main() -> anyhow::Result<()> {
     let args: Vec<String> = env::args().collect();
+    println!("Генерация случайных коррелированных полей по данным из конфигурационного файла.");
+    println!("Вример вызова: generate_field_json config.json");
+    println!(
+        "Если указанный конфигурационный файл не существует, будет записан пример конфигурационного файла."
+    );
+
     let arg1 = args
         .get(1)
         .context("Необходим параметр - путь к json файлу с конфигурацией генерации")?;
+    let pb = PathBuf::from(&arg1);
+    if !pb.exists() {
+        println!("Файл {arg1} не найден. Запись примера конфигурационного файла в {arg1}");
+        save_json_example(&arg1)?;
+        return Ok(());
+    }
     let f = File::open(arg1)?;
     let reader = BufReader::new(f);
     let config: JsonConfig = serde_json::from_reader(reader)?;
