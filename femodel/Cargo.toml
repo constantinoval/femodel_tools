@@ -12,5 +12,6 @@ rand_distr = "0.6.0"
 rayon = "1.12.0"
 regex = "1.13.1"
 serde = { version = "1.0.229", features = ["derive"], optional = true }
+statrs = "0.19.1"
 [features]
 serde = ["dep:serde"]

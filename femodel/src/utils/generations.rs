@@ -5,6 +5,7 @@ use fast_math;
 use indicatif::{ParallelProgressIterator, ProgressBar, ProgressStyle};
 use rand_distr::{Distribution, StandardNormal};
 use rayon::prelude::*;
+use statrs::distribution::{ContinuousCDF, Normal};
 use std::collections::HashMap;
 use std::collections::hash_map::Keys;
 use std::fmt;
@@ -601,5 +602,50 @@ pub fn norm_to_uniform_rank(z: &HashMap<usize, f32>) -> HashMap<usize, f32> {
         .into_iter()
         .enumerate()
         .map(|(i, (node, _))| (node, (i as f32 + 0.5) / n))
+        .collect()
+}
+
+pub fn norm_trunc(z: &HashMap<usize, f32>, a: f32, b: f32) -> HashMap<usize, f32> {
+    z.par_iter().map(|(&n, &v)| (n, v.clamp(a, b))).collect()
+}
+
+/// Пересчитывает пространственное поле стандартного нормального распределения Z ~ N(0, 1)
+/// в усеченное нормальное распределение на интервале [mu, b].
+///
+/// # Аргументы
+/// * `z_field` - срез значений исходного поля N(0, 1)
+/// * `mu` - мат. ожидание базового распределения (оно же левая граница усечения)
+/// * `sigma` - стандартное отклонение базового распределения (> 0.0)
+/// * `b` - явная правая граница усечения (должна быть > mu)
+pub fn transform_to_truncated_normal(
+    z_field: &HashMap<usize, f32>,
+    mu: f32,
+    sigma: f32,
+    b: f32,
+) -> HashMap<usize, f32> {
+    // Стандартное нормальное распределение N(0, 1)
+    let std_norm = Normal::new(0.0, 1.0).unwrap();
+
+    // Вероятностные границы усечения:
+    // Левая граница a = mu => alpha = (mu - mu) / sigma = 0.0 => Phi(0.0) = 0.5
+    let phi_alpha = 0.5;
+    let beta = (b - mu) / sigma;
+    let phi_beta = std_norm.cdf(beta as f64);
+    let delta_phi = phi_beta - phi_alpha;
+
+    // Преобразование каждого узла с сохранением пространственной топологии
+    z_field
+        .iter()
+        .map(|(&n, &z)| {
+            // Шаг 1: Перевод Z(x) в равномерное U(x) в (0, 1)
+            let u = std_norm.cdf(z as f64);
+
+            // Шаг 2: Масштабирование в диапазон [phi_alpha, phi_beta]
+            // clamp защищает от редких ошибок округления на экстремальных хвостах
+            let p = (phi_alpha + u * delta_phi).clamp(f64::MIN_POSITIVE, 1.0 - f64::EPSILON);
+
+            // Шаг 3: Обратное преобразование (квантиль)
+            (n, mu + sigma * std_norm.inverse_cdf(p) as f32)
+        })
         .collect()
 }
