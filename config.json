@@ -1,15 +1,52 @@
 {
-  "field_properties":[
+  "mesh_file": "mesh.k",
+  "output": "fieds.k",
+  "save_vtk": true,
+  "fields": [
     {
-      "mean":100.0,
-      "std":10.0,
-      "id":1,
-      "name":"sigma0",
-      "field_type":{"Isotropic":1.0},
-      "inverse":false
+      "field_type": {
+        "Isotropic": 1.0
+      },
+      "properties": [
+        {
+          "id": 1,
+          "name": "field_1",
+          "mean": 100.0,
+          "std": 10.0,
+          "invert": false,
+          "trunc": null
+        },
+        {
+          "id": 2,
+          "name": "field_2",
+          "mean": 50.0,
+          "std": 2.0,
+          "invert": true,
+          "trunc": [
+            48.0,
+            52.0
+          ]
+        }
+      ]
+    },
+    {
+      "field_type": {
+        "Orthotropic": [
+          1.0,
+          2.0,
+          3.0
+        ]
+      },
+      "properties": [
+        {
+          "id": 3,
+          "name": "field_3",
+          "mean": 1.0,
+          "std": 0.1,
+          "invert": false,
+          "trunc": null
+        }
+      ]
     }
-  ],
-  "coupled":true,
-  "mesh_file":"mesh.inp",
-  "output":"1.inp"
+  ]
 }

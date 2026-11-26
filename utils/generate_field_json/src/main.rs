@@ -16,6 +16,7 @@ struct FieldPropertiesJson {
     mean: f32,
     std: f32,
     invert: bool,
+    trunc: Option<(f32, f32)>,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -39,6 +40,7 @@ fn save_json_example(file_path: &str) -> anyhow::Result<()> {
         mean: 100.0,
         std: 10.0,
         invert: false,
+        trunc: None,
     };
     let fp2 = FieldPropertiesJson {
         id: 2,
@@ -46,6 +48,7 @@ fn save_json_example(file_path: &str) -> anyhow::Result<()> {
         mean: 50.0,
         std: 2.0,
         invert: true,
+        trunc: Some((48.0, 52.0)),
     };
     let rf1 = RandomFieldsJson {
         field_type: FieldType::Isotropic(1.0),
@@ -57,6 +60,7 @@ fn save_json_example(file_path: &str) -> anyhow::Result<()> {
         mean: 1.0,
         std: 0.1,
         invert: false,
+        trunc: None,
     };
     let rf2 = RandomFieldsJson {
         field_type: FieldType::Orthotropic(1.0, 2.0, 3.0),
@@ -105,7 +109,7 @@ fn main() -> anyhow::Result<()> {
             let rf = RandomField::new()
                 .with_id(props.id)
                 .with_name(props.name)
-                .generate(&pert, props.mean, props.std, props.invert);
+                .generate(&pert, props.mean, props.std, props.invert, props.trunc);
             random_fields.push(rf);
         }
     }

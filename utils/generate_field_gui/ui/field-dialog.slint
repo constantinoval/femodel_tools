@@ -9,9 +9,13 @@ export component FieldPropertiesDialog inherits Rectangle {
     in-out property <string> std <=> field_std.text;
     in-out property <string> id <=> field_id.text;
     in-out property <bool> inverse <=> field_inverse.checked;
+    in-out property <bool> is_trunc <=> is_truncated.checked;
+    in-out property <string> trunc_min <=> field_truncated_min.text;
+    in-out property <string> trunc_max <=> field_truncated_max.text;
+
     property <bool> valid: mean.to-float()>=0 && std.to-float() > 0 && id.to-float()>0;
 
-    callback accepted(int, string, float, float, bool);
+    callback accepted(int, string, float, float, bool, [float]);
 
     width: 600px;
     height: 340px;

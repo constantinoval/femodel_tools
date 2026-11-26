@@ -522,6 +522,16 @@ impl Perturbation {
             .map(|(&n, &v)| (n, mean + std * v))
             .collect()
     }
+
+    pub fn generate_trancated(
+        &self,
+        mean: f32,
+        std: f32,
+        min: f32,
+        max: f32,
+    ) -> HashMap<usize, f32> {
+        transform_to_truncated_normal(&self.normal_field, mean, std, min, max)
+    }
 }
 
 pub struct RandomField {
@@ -551,13 +561,27 @@ impl RandomField {
         self
     }
 
-    pub fn generate(mut self, p: &Perturbation, mean: f32, std: f32, inverse: bool) -> Self {
+    pub fn generate(
+        mut self,
+        p: &Perturbation,
+        mean: f32,
+        std: f32,
+        inverse: bool,
+        tranc: Option<(f32, f32)>,
+    ) -> Self {
         let std = if inverse { -std } else { std };
-        self.data = p.generate_for_norm_std(mean, std);
         self.description = format!(
             "mean: {}, std: {}, Field type: {:?}, inverse: {}",
             mean, std, p.field_type, inverse
         );
+        match tranc {
+            Some((min, max)) => {
+                self.data = p.generate_trancated(mean, std, min, max);
+                self.description
+                    .push_str(format!(", truncated to ({}, {})", min, max).as_str());
+            }
+            None => self.data = p.generate_for_norm_std(mean, std),
+        }
         self
     }
 }
@@ -575,40 +599,6 @@ impl fmt::Display for RandomField {
     }
 }
 
-/// Преобразование стандартного нормального распределения в логнормальное
-/// со значениями в интервале (0, dmax)
-pub fn norm_to_damage_lognormal(
-    z: &HashMap<usize, f32>,
-    dmax: f32,  // 0.1
-    sigma: f32, // 0.5..1.0 — «разброс»
-) -> HashMap<usize, f32> {
-    // медиана подбирается так, чтобы P(d > dmax) было мало (~1e-3..1e-2)
-    // при sigma=0.8 и 3σ-отсечке: median ≈ dmax * exp(-2.5 * sigma)
-    let median = dmax * (-2.5 * sigma).exp();
-    let mu = median.ln();
-    z.par_iter()
-        .map(|(&n, &v)| {
-            let d = (mu + sigma * v).exp();
-            (n, d.min(dmax))
-        })
-        .collect()
-}
-
-pub fn norm_to_uniform_rank(z: &HashMap<usize, f32>) -> HashMap<usize, f32> {
-    let mut pairs: Vec<(usize, f32)> = z.iter().map(|(&n, &v)| (n, v)).collect();
-    pairs.sort_by(|a, b| a.1.total_cmp(&b.1));
-    let n = pairs.len() as f32;
-    pairs
-        .into_iter()
-        .enumerate()
-        .map(|(i, (node, _))| (node, (i as f32 + 0.5) / n))
-        .collect()
-}
-
-pub fn norm_trunc(z: &HashMap<usize, f32>, a: f32, b: f32) -> HashMap<usize, f32> {
-    z.par_iter().map(|(&n, &v)| (n, v.clamp(a, b))).collect()
-}
-
 /// Пересчитывает пространственное поле стандартного нормального распределения Z ~ N(0, 1)
 /// в усеченное нормальное распределение на интервале [mu, b].
 ///
@@ -616,11 +606,13 @@ pub fn norm_trunc(z: &HashMap<usize, f32>, a: f32, b: f32) -> HashMap<usize, f32
 /// * `z_field` - срез значений исходного поля N(0, 1)
 /// * `mu` - мат. ожидание базового распределения (оно же левая граница усечения)
 /// * `sigma` - стандартное отклонение базового распределения (> 0.0)
+/// * `a` - явная лквая граница усечения
 /// * `b` - явная правая граница усечения (должна быть > mu)
 pub fn transform_to_truncated_normal(
     z_field: &HashMap<usize, f32>,
     mu: f32,
     sigma: f32,
+    a: f32,
     b: f32,
 ) -> HashMap<usize, f32> {
     // Стандартное нормальное распределение N(0, 1)
@@ -628,11 +620,12 @@ pub fn transform_to_truncated_normal(
 
     // Вероятностные границы усечения:
     // Левая граница a = mu => alpha = (mu - mu) / sigma = 0.0 => Phi(0.0) = 0.5
-    let phi_alpha = 0.5;
+    let alpha = (a - mu) / sigma;
+    let phi_alpha = std_norm.cdf(alpha as f64);
     let beta = (b - mu) / sigma;
     let phi_beta = std_norm.cdf(beta as f64);
     let delta_phi = phi_beta - phi_alpha;
-
+    // let eps = f64::EPSILON;
     // Преобразование каждого узла с сохранением пространственной топологии
     z_field
         .iter()
@@ -642,10 +635,10 @@ pub fn transform_to_truncated_normal(
 
             // Шаг 2: Масштабирование в диапазон [phi_alpha, phi_beta]
             // clamp защищает от редких ошибок округления на экстремальных хвостах
-            let p = (phi_alpha + u * delta_phi).clamp(f64::MIN_POSITIVE, 1.0 - f64::EPSILON);
-
+            let p = (phi_alpha + u * delta_phi);
+            let y = mu + sigma * std_norm.inverse_cdf(p) as f32;
             // Шаг 3: Обратное преобразование (квантиль)
-            (n, mu + sigma * std_norm.inverse_cdf(p) as f32)
+            (n, y.clamp(a, b))
         })
         .collect()
 }

@@ -20,6 +20,7 @@ struct FieldDraft {
     mean: f32,
     std: f32,
     inverse: bool,
+    trunc: Option<(f32, f32)>,
 }
 
 #[derive(Clone)]
@@ -83,7 +84,7 @@ fn run_generation(job: GenerationJob) -> String {
                 RandomField::new()
                     .with_id(f.id)
                     .with_name(f.name.clone())
-                    .generate(&pert, f.mean, f.std, f.inverse)
+                    .generate(&pert, f.mean, f.std, f.inverse, f.trunc)
             })
         })
         .collect();
@@ -266,11 +267,12 @@ fn main() -> Result<(), Box<dyn Error>> {
                     mean: fp.mean,
                     std: fp.std,
                     inverse: fp.inverse,
+                    trunc: None,
                 });
             fm.push(StandardListViewItem::from(
                 String::from(format!(
-                    "id({}), name({}), mean({}), std({}), inverse({})",
-                    fp.id, fp.name, fp.mean, fp.std, fp.inverse
+                    "id({}), name({}), mean({}), std({}), inverse({}), trunc({})",
+                    fp.id, fp.name, fp.mean, fp.std, fp.inverse, fp.trunc
                 ))
                 .as_str(),
             ));

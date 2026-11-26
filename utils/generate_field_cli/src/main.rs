@@ -141,7 +141,7 @@ fn main() -> anyhow::Result<()> {
             let field = RandomField::new()
                 .with_id(id as usize)
                 .with_name(name)
-                .generate(&pert, mean, std, inverse);
+                .generate(&pert, mean, std, inverse, None);
             fields.push(field);
             if !Confirm::new("Добавить еще поля?")
                 .with_default(false)
