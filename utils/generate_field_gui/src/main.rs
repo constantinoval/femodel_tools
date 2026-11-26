@@ -259,6 +259,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         let app_state = app_state.clone();
         let fm = fields_model.clone();
         move |idx, fp: FieldProps| {
+            let trunc: Option<(f32, f32)> = match (fp.trunc.row_data(0), fp.trunc.row_data(1)) {
+                (Some(min), Some(max)) => Some((min, max)),
+                _ => None,
+            };
             app_state.borrow_mut().perturbations[idx as usize]
                 .fields
                 .push(FieldDraft {
@@ -267,15 +271,16 @@ fn main() -> Result<(), Box<dyn Error>> {
                     mean: fp.mean,
                     std: fp.std,
                     inverse: fp.inverse,
-                    trunc: None,
+                    trunc: trunc,
                 });
-            fm.push(StandardListViewItem::from(
-                String::from(format!(
-                    "id({}), name({}), mean({}), std({}), inverse({}), trunc({})",
-                    fp.id, fp.name, fp.mean, fp.std, fp.inverse, fp.trunc
-                ))
-                .as_str(),
-            ));
+            let mut s = format!(
+                "id({}), name({}), mean({}), std({}), inverse({})",
+                fp.id, fp.name, fp.mean, fp.std, fp.inverse
+            );
+            if let Some((min, max)) = trunc {
+                s.push_str(format!(", trunc({}, {})", min, max).as_str());
+            }
+            fm.push(StandardListViewItem::from(s.as_str()));
         }
     });
 
@@ -403,6 +408,10 @@ fn main() -> Result<(), Box<dyn Error>> {
                         mean: f.mean,
                         std: f.std,
                         inverse: f.inverse,
+                        trunc: ModelRc::from(Rc::new(VecModel::from(match f.trunc {
+                            Some((min, max)) => vec![min, max],
+                            None => vec![],
+                        }))),
                     };
                 }
             };
@@ -412,6 +421,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 mean: 0.0,
                 std: 1.0,
                 inverse: false,
+                trunc: ModelRc::from(Rc::new(VecModel::from(vec![]))),
             }
         }
     });
@@ -421,6 +431,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         let fm = fields_model.clone();
         move |p_idx, f_idx, fp| {
             let mut app_state = app_state.borrow_mut();
+            let trunc: Option<(f32, f32)> = match (fp.trunc.row_data(0), fp.trunc.row_data(1)) {
+                (Some(min), Some(max)) => Some((min, max)),
+                _ => None,
+            };
             if let Some(p) = app_state.perturbations.get_mut(p_idx as usize) {
                 if let Some(f) = p.fields.get_mut(f_idx as usize) {
                     f.id = fp.id as usize;
@@ -428,15 +442,17 @@ fn main() -> Result<(), Box<dyn Error>> {
                     f.mean = fp.mean;
                     f.std = fp.std;
                     f.inverse = fp.inverse;
+                    f.trunc = trunc;
                 }
             };
-            let item = StandardListViewItem::from(
-                format!(
-                    "id({}), name({}), mean({}), std({}), inverse({})",
-                    fp.id, fp.name, fp.mean, fp.std, fp.inverse
-                )
-                .as_str(),
+            let mut s = format!(
+                "id({}), name({}), mean({}), std({}), inverse({})",
+                fp.id, fp.name, fp.mean, fp.std, fp.inverse
             );
+            if let Some((min, max)) = trunc {
+                s.push_str(format!(", trunc({}, {})", min, max).as_str());
+            }
+            let item = StandardListViewItem::from(s.as_str());
             fm.set_row_data(f_idx as usize, item);
         }
     });

@@ -62,12 +62,13 @@ export component AppWindow inherits Window {
 
     add_field_dialog:= FieldPropertiesDialog {
         visible: false;
-        accepted (id, name, mean, std, inverse) => {
+        accepted (id, name, mean, std, inverse, trunc) => {
             current_field_props.id = id;
             current_field_props.name = name;
             current_field_props.mean = mean;
             current_field_props.std = std;
             current_field_props.inverse = inverse;
+            current_field_props.trunc = trunc;
             if !root.dialog_edit_mode {
                 root.add_field(current_perturbation_index, current_field_props);
             } else {
@@ -220,6 +221,11 @@ export component AppWindow inherits Window {
                             add_field_dialog.mean = current_field_props.mean;
                             add_field_dialog.std = current_field_props.std;
                             add_field_dialog.inverse = current_field_props.inverse;
+                            add_field_dialog.is_trunc = current_field_props.trunc.length == 2;
+                            if add_field_dialog.is_trunc {
+                                add_field_dialog.trunc_min = current_field_props.trunc[0];
+                                add_field_dialog.trunc_max = current_field_props.trunc[1];
+                            }
                             root.dialog_edit_mode = true;
                             add_field_dialog.visible = true;
                         }

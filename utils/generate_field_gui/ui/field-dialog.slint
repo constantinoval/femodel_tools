@@ -13,12 +13,14 @@ export component FieldPropertiesDialog inherits Rectangle {
     in-out property <string> trunc_min <=> field_truncated_min.text;
     in-out property <string> trunc_max <=> field_truncated_max.text;
 
-    property <bool> valid: mean.to-float()>=0 && std.to-float() > 0 && id.to-float()>0;
+    property <bool> valid2: true;
+    property <bool> valid1: mean.to-float()>=0 && std.to-float() > 0 && id.to-float()>0;
+    property <bool> valid: valid1 && valid2;
 
     callback accepted(int, string, float, float, bool, [float]);
 
     width: 600px;
-    height: 340px;
+    height: 420px;
 
     VerticalBox {
         padding: 12px;
@@ -68,9 +70,37 @@ export component FieldPropertiesDialog inherits Rectangle {
             field_inverse:=Switch {
                 text: "Инвертировать поле";
             }
+
+            is_truncated:=Switch {
+                text: "Урезанное поле";
+                changed checked => {
+                    if !is_trunc {root.valid2 = true;}
+                    if is_trunc {root.valid2 = trunc_min.to-float()<mean.to-float() && trunc_max.to-float()>mean.to-float();}
+                    root.valid = valid1 && valid2;
+                }
+            }
+                HorizontalBox {
+                visible: is_trunc;
+                    Text {
+                        vertical-alignment: center;
+                        text: "min";
+                    }
+                    field_truncated_min:= LineEdit {
+                        input-type: decimal;
+                        text: "-3.0";
+                    }
+                    Text {
+                        vertical-alignment: center;
+                        text: "max";
+                    }
+                    field_truncated_max:= LineEdit {
+                        input-type: decimal;
+                        text: "3.0";
+                    }
+                }
         // сообщение о неверном вводе
         Text {
-            text: root.valid?"":"Среднее значение должно быть >=0, стандартное отклонение >0, идентификатор >0";
+            text: root.valid?"":"Среднее значение должно быть >=0, стандартное отклонение >0, идентификатор >0, минимальное значение<среднего, максимальное значение>среднего";
             color: red;
             wrap: word-wrap;
         }
@@ -80,7 +110,7 @@ export component FieldPropertiesDialog inherits Rectangle {
                 enabled: root.valid;
                 kind: ok;
                 clicked => {
-                    root.accepted(id.to-float(), name, mean.to-float(), std.to-float(), inverse);
+                    root.accepted(id.to-float(), name, mean.to-float(), std.to-float(), inverse, !is_trunc?[]:[trunc_min.to-float(), trunc_max.to-float()]);
                     root.id = root.id.to-float() + 1;
                     root.visible = false;
                 }
