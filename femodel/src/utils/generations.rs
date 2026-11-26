@@ -573,3 +573,33 @@ impl fmt::Display for RandomField {
         )
     }
 }
+
+/// Преобразование стандартного нормального распределения в логнормальное
+/// со значениями в интервале (0, dmax)
+pub fn norm_to_damage_lognormal(
+    z: &HashMap<usize, f32>,
+    dmax: f32,  // 0.1
+    sigma: f32, // 0.5..1.0 — «разброс»
+) -> HashMap<usize, f32> {
+    // медиана подбирается так, чтобы P(d > dmax) было мало (~1e-3..1e-2)
+    // при sigma=0.8 и 3σ-отсечке: median ≈ dmax * exp(-2.5 * sigma)
+    let median = dmax * (-2.5 * sigma).exp();
+    let mu = median.ln();
+    z.par_iter()
+        .map(|(&n, &v)| {
+            let d = (mu + sigma * v).exp();
+            (n, d.min(dmax))
+        })
+        .collect()
+}
+
+pub fn norm_to_uniform_rank(z: &HashMap<usize, f32>) -> HashMap<usize, f32> {
+    let mut pairs: Vec<(usize, f32)> = z.iter().map(|(&n, &v)| (n, v)).collect();
+    pairs.sort_by(|a, b| a.1.total_cmp(&b.1));
+    let n = pairs.len() as f32;
+    pairs
+        .into_iter()
+        .enumerate()
+        .map(|(i, (node, _))| (node, (i as f32 + 0.5) / n))
+        .collect()
+}
